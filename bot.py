@@ -104,7 +104,7 @@ def save_report(name, answers):
                 )
         conn.commit()
 
-def def get_today_reports():
+def get_today_reports():
     today = datetime.now(BISHKEK).date()
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
