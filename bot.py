@@ -104,18 +104,19 @@ def save_report(name, answers):
                 )
         conn.commit()
 
-def get_today_reports():
+def def get_today_reports():
     today = datetime.now(BISHKEK).date()
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM reports WHERE date = %s ORDER BY time ASC", (today,))
+            cur.execute("SELECT id, date::text, time::text, specialist, metric, value FROM reports WHERE date = %s ORDER BY time ASC", (today,))
             return cur.fetchall()
 
 def get_week_reports():
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM reports WHERE date >= CURRENT_DATE - INTERVAL '7 days' ORDER BY date DESC, time ASC")
+            cur.execute("SELECT id, date::text, time::text, specialist, metric, value FROM reports WHERE date >= CURRENT_DATE - INTERVAL '7 days' ORDER BY date DESC, time ASC")
             return cur.fetchall()
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     name = SPECIALISTS.get(user_id)
@@ -194,7 +195,7 @@ def api_today():
 @app.route("/api/week")
 def api_week():
     rows = get_week_reports()
-    result = []
+    return jsonify([dict(r) for r in rows])
     for r in rows:
         row = dict(r)
         row["date"] = str(row["date"])
