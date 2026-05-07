@@ -1,8 +1,9 @@
 import os
+import hmac
 import logging
 import threading
 from datetime import datetime, time as dtime, date as ddate, timedelta
-from flask import Flask, render_template_string, jsonify, request
+from flask import Flask, render_template_string, jsonify, request, abort
 import psycopg2
 import psycopg2.extras
 import pytz
@@ -15,6 +16,7 @@ from telegram.ext import (
 BOT_TOKEN    = os.environ["BOT_TOKEN"]
 DATABASE_URL = os.environ["DATABASE_URL"]
 BOSS_ID      = os.environ.get("BOSS_ID", "")
+ADMIN_TOKEN  = os.environ.get("ADMIN_TOKEN", "")
 PORT         = int(os.environ.get("PORT", 8080))
 BISHKEK      = pytz.timezone("Asia/Bishkek")
 
@@ -34,49 +36,49 @@ SPECIALISTS = {
     }.items() if uid
 }
 SPECIALIST_ORDER = ["Эльдана", "Станислав", "Мадина", "Олег", "Атай", "Производство"]
-TEXT_METRICS = {"комментарий", "сделано", "план_завтра", "проблемы"}
-QUESTIONS = {
+
+DEFAULT_QUESTIONS = {
     "Эльдана": [
-        ("заявки",    "📥 Сколько заявок получила сегодня?"),
-        ("письма",    "📧 Сколько исходящих писем отправила?"),
-        ("рассылки",  "📨 Сколько рассылок сделала?"),
-        ("комментарий", "💬 Комментарий (или «-»)"),
+        ("заявки",       "заявки",       "📥 Сколько заявок получила сегодня?", False),
+        ("письма",       "письма",       "📧 Сколько исходящих писем отправила?", False),
+        ("рассылки",     "рассылки",     "📨 Сколько рассылок сделала?", False),
+        ("комментарий",  "комментарий",  "💬 Комментарий (или «-»)", True),
     ],
     "Станислав": [
-        ("контакты",       "📞 Сколько исходящих контактов?"),
-        ("кп",             "📄 Сколько КП отправил?"),
-        ("договора",       "✍️ Сколько договоров заключил?"),
-        ("объекты_работа", "🏗 Объектов в работе?"),
-        ("объекты_разраб", "🔍 Объектов в разработке?"),
-        ("доход",          "💰 Валовый доход за день (0 если нет)?"),
-        ("комментарий",    "💬 Комментарий (или «-»)"),
+        ("контакты",       "контакты",       "📞 Сколько исходящих контактов?", False),
+        ("кп",             "КП",             "📄 Сколько КП отправил?", False),
+        ("договора",       "договора",       "✍️ Сколько договоров заключил?", False),
+        ("объекты_работа", "объекты в работе", "🏗 Объектов в работе?", False),
+        ("объекты_разраб", "объекты в разработке", "🔍 Объектов в разработке?", False),
+        ("доход",          "доход",          "💰 Валовый доход за день (0 если нет)?", False),
+        ("комментарий",    "комментарий",    "💬 Комментарий (или «-»)", True),
     ],
     "Мадина": [
-        ("контакты",       "📞 Сколько исходящих контактов?"),
-        ("пакеты",         "📦 Сколько пакетов продала?"),
-        ("договора",       "✍️ Сколько договоров заключила?"),
-        ("объекты_работа", "🏗 Объектов в работе?"),
-        ("комментарий",    "💬 Комментарий (или «-»)"),
+        ("контакты",       "контакты",       "📞 Сколько исходящих контактов?", False),
+        ("пакеты",         "пакеты",         "📦 Сколько пакетов продала?", False),
+        ("договора",       "договора",       "✍️ Сколько договоров заключила?", False),
+        ("объекты_работа", "объекты в работе", "🏗 Объектов в работе?", False),
+        ("комментарий",    "комментарий",    "💬 Комментарий (или «-»)", True),
     ],
     "Олег": [
-        ("контакты",       "📞 Сколько контактов сегодня?"),
-        ("кп",             "📄 Сколько КП отправил?"),
-        ("клиенты_работа", "🏛 Клиентов в работе?"),
-        ("комментарий",    "💬 Комментарий (или «-»)"),
+        ("контакты",       "контакты",       "📞 Сколько контактов сегодня?", False),
+        ("кп",             "КП",             "📄 Сколько КП отправил?", False),
+        ("клиенты_работа", "клиенты в работе", "🏛 Клиентов в работе?", False),
+        ("комментарий",    "комментарий",    "💬 Комментарий (или «-»)", True),
     ],
     "Атай": [
-        ("тендеры_найдено",  "🔎 Сколько тендеров нашёл?"),
-        ("заявки_подготовл", "📝 Сколько заявок подготовил?"),
-        ("заявки_подано",    "📬 Сколько заявок подал?"),
-        ("заявки_отклонено", "❌ Сколько заявок отклонено?"),
-        ("тендеры_выиграно", "🏆 Сколько тендеров выиграл?"),
-        ("сумма_подано",     "💰 Сумма поданных предложений?"),
-        ("комментарий",      "💬 Комментарий (или «-»)"),
+        ("тендеры_найдено",  "тендеры найдено",  "🔎 Сколько тендеров нашёл?", False),
+        ("заявки_подготовл", "заявки подготовл.", "📝 Сколько заявок подготовил?", False),
+        ("заявки_подано",    "заявки подано",    "📬 Сколько заявок подал?", False),
+        ("заявки_отклонено", "заявки отклонено", "❌ Сколько заявок отклонено?", False),
+        ("тендеры_выиграно", "тендеры выиграно", "🏆 Сколько тендеров выиграл?", False),
+        ("сумма_подано",     "сумма подано",     "💰 Сумма поданных предложений?", False),
+        ("комментарий",      "комментарий",      "💬 Комментарий (или «-»)", True),
     ],
     "Производство": [
-        ("сделано",     "✅ Что сделали сегодня?"),
-        ("план_завтра", "📋 План на завтра?"),
-        ("проблемы",    "⚠️ Проблемы / риски (или «-»)"),
+        ("сделано",     "сделано",     "✅ Что сделали сегодня?", True),
+        ("план_завтра", "план на завтра", "📋 План на завтра?", True),
+        ("проблемы",    "проблемы",    "⚠️ Проблемы / риски (или «-»)", True),
     ],
 }
 
@@ -100,6 +102,29 @@ def init_db():
                     value      TEXT NOT NULL
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS metrics_config (
+                    id            SERIAL PRIMARY KEY,
+                    specialist    TEXT NOT NULL,
+                    metric_key    TEXT NOT NULL,
+                    display_name  TEXT NOT NULL,
+                    question_text TEXT NOT NULL,
+                    position      INT NOT NULL DEFAULT 0,
+                    is_text       BOOLEAN NOT NULL DEFAULT FALSE,
+                    is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+                    UNIQUE (specialist, metric_key)
+                )
+            """)
+            cur.execute("SELECT COUNT(*) FROM metrics_config")
+            if cur.fetchone()[0] == 0:
+                for specialist, items in DEFAULT_QUESTIONS.items():
+                    for pos, (key, display, question, is_text) in enumerate(items):
+                        cur.execute(
+                            "INSERT INTO metrics_config "
+                            "(specialist, metric_key, display_name, question_text, position, is_text) "
+                            "VALUES (%s,%s,%s,%s,%s,%s)",
+                            (specialist, key, display, question, pos, is_text),
+                        )
         conn.commit()
 
 def save_report(name, answers):
@@ -131,6 +156,39 @@ def get_period_reports(start_date, end_date):
             )
             return cur.fetchall()
 
+def get_questions(specialist):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT metric_key, question_text FROM metrics_config "
+                "WHERE specialist = %s AND is_active = TRUE "
+                "ORDER BY position ASC, id ASC",
+                (specialist,),
+            )
+            return [(k, q) for k, q in cur.fetchall()]
+
+def get_config_lookups():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT metric_key, display_name, is_text, is_active FROM metrics_config")
+            display = {}
+            text_keys = set()
+            for k, d, is_text, is_active in cur.fetchall():
+                display[k] = d
+                if is_text:
+                    text_keys.add(k)
+            return display, text_keys
+
+def get_admin_config():
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT id, specialist, metric_key, display_name, question_text, "
+                "position, is_text, is_active FROM metrics_config "
+                "ORDER BY specialist, position ASC, id ASC"
+            )
+            return cur.fetchall()
+
 def parse_number(s):
     if s is None:
         return None
@@ -142,7 +200,9 @@ def parse_number(s):
     except ValueError:
         return None
 
-def aggregate_reports(rows):
+def aggregate_reports(rows, text_keys=None):
+    if text_keys is None:
+        text_keys = set()
     result = {}
     for r in rows:
         sp = r["specialist"]
@@ -150,7 +210,7 @@ def aggregate_reports(rows):
         bucket["_days"].add(r["date"])
         metric = r["metric"]
         value = (r["value"] or "").strip()
-        num = None if metric in TEXT_METRICS else parse_number(value)
+        num = None if metric in text_keys else parse_number(value)
         if num is not None:
             bucket["metrics"][metric] = bucket["metrics"].get(metric, 0) + num
             day_map = bucket["_series"].setdefault(metric, {})
@@ -191,10 +251,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not name:
         await update.message.reply_text(f"❌ Ты не зарегистрирован.\nСообщи администратору свой ID: {user_id}")
         return ConversationHandler.END
-    user_sessions[user_id] = {"name": name, "questions": QUESTIONS[name], "step": 0, "answers": {}}
+    questions = get_questions(name)
+    if not questions:
+        await update.message.reply_text("⚠️ У тебя пока нет настроенных вопросов. Сообщи администратору.")
+        return ConversationHandler.END
+    user_sessions[user_id] = {"name": name, "questions": questions, "step": 0, "answers": {}}
     now_str = datetime.now(BISHKEK).strftime("%d.%m.%Y")
-    await update.message.reply_text(f"👋 Привет, {name}!\n📅 Отчёт за {now_str}\nВсего {len(QUESTIONS[name])} вопроса 👇", reply_markup=ReplyKeyboardRemove())
-    await update.message.reply_text(QUESTIONS[name][0][1])
+    await update.message.reply_text(f"👋 Привет, {name}!\n📅 Отчёт за {now_str}\nВсего {len(questions)} вопроса 👇", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(questions[0][1])
     return ASKING
 
 async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -259,7 +323,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="120">
-<title>Дашборд</title>
+<title>Live Dashboard ОсОО «Каравелла»</title>
 <style>
 body{background:#0a0c10;color:#e2e6f0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;padding:24px;margin:0}
 h1{color:#e8ff47;font-size:32px;margin:0 0 8px}
@@ -296,7 +360,7 @@ summary:hover{color:#e2e6f0}
 .today-row .value .num{color:#e8ff47;font-size:20px;font-weight:bold}
 .metric-row{display:grid;grid-template-columns:120px minmax(0,1fr) auto 130px;gap:14px;align-items:center;padding:14px 0;border-top:1px solid #1a1d26}
 .metric-row:first-of-type{border-top:none}
-.metric-row .label{color:#9097a8;font-size:13px;text-transform:lowercase}
+.metric-row .label{color:#9097a8;font-size:13px}
 .metric-row .days{display:flex;gap:4px;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin;scrollbar-color:#2d3346 transparent}
 .metric-row .days::-webkit-scrollbar{height:5px}
 .metric-row .days::-webkit-scrollbar-thumb{background:#2d3346;border-radius:2px}
@@ -329,8 +393,8 @@ summary:hover{color:#e2e6f0}
 </style>
 </head>
 <body>
-<h1>LIVE ДАШБОРД</h1>
-<div class="live">● Обновляется каждые 2 минуты</div>
+<h1>Live Dashboard ОсОО «Каравелла»</h1>
+<div class="live">● Обновляется каждые 2 минуты &nbsp;·&nbsp; <a href="/admin" style="color:#5a6070;text-decoration:none">⚙ admin</a></div>
 <div class="tabs">
   <button class="tab active" data-tab="today">Сегодня</button>
   <button class="tab" data-tab="week">Неделя</button>
@@ -351,26 +415,29 @@ summary:hover{color:#e2e6f0}
 <div id="tt"></div>
 <script>
 const SP=['Эльдана','Станислав','Мадина','Олег','Атай','Производство'];
-const TEXT_METRICS=new Set(['комментарий','сделано','план_завтра','проблемы']);
 
 function fmtDate(s){const d=new Date(s);return d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})}
 function fmtNum(v){return Number(v).toLocaleString('ru-RU')}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c])}
+function dn(map,k){return (map&&map[k])||k}
 
 async function loadToday(){
-  const t=await fetch('/api/today').then(r=>r.json());
-  const sub=new Set(t.map(r=>r.specialist));
+  const data=await fetch('/api/today').then(r=>r.json());
+  const rows=data.rows||[];
+  const display=data.display_names||{};
+  const textKeys=new Set(data.text_keys||[]);
+  const sub=new Set(rows.map(r=>r.specialist));
   document.getElementById('status').innerHTML='<div class="card"><div class="name">Статус сдачи сегодня</div>'+SP.map(n=>`<span class="chip ${sub.has(n)?'done':'pending'}">${sub.has(n)?'✓':''} ${esc(n)}</span>`).join('')+'</div>';
   const bp={};
-  t.forEach(r=>{(bp[r.specialist]=bp[r.specialist]||[]).push(r)});
+  rows.forEach(r=>{(bp[r.specialist]=bp[r.specialist]||[]).push(r)});
   let h='';
   for(const n of SP){
     if(!bp[n]) continue;
     h+=`<div class="card"><div class="name">${esc(n)}</div>`;
     bp[n].forEach(r=>{
-      const isN=!TEXT_METRICS.has(r.metric)&&!isNaN(parseFloat(r.value))&&isFinite(r.value);
+      const isN=!textKeys.has(r.metric)&&!isNaN(parseFloat(r.value))&&isFinite(r.value);
       const valHtml=isN?`<span class="num">${fmtNum(r.value)}</span>`:esc(r.value);
-      h+=`<div class="today-row"><span class="label">${esc(r.metric)}</span><span class="value">${valHtml}</span></div>`;
+      h+=`<div class="today-row"><span class="label">${esc(dn(display,r.metric))}</span><span class="value">${valHtml}</span></div>`;
     });
     h+='</div>';
   }
@@ -423,6 +490,7 @@ function renderChart(metric,points,gid){
 async function loadAggregate(period){
   const d=await fetch(`/api/aggregate?period=${period}`).then(r=>r.json());
   document.getElementById(`${period}-period`).textContent=`Период: ${fmtDate(d.start)} – ${fmtDate(d.end)}`;
+  const display=d.display_names||{};
   let h='';let gid=0;
   for(const n of SP){
     const b=d.specialists[n];
@@ -453,11 +521,12 @@ async function loadAggregate(period){
           const val=has?fmtNum(byDate[dd]):'—';
           return `<div class="day-cell${has?'':' empty'}"><div class="d">${fmtDate(dd)}</div><div class="v">${val}</div></div>`;
         }).join('');
+        const lbl=dn(display,m);
         h+=`<div class="metric-row">
-          <span class="label">${esc(m)}</span>
+          <span class="label">${esc(lbl)}</span>
           <div class="days">${daysHtml}</div>
           <div class="stats">${avgHtml}${trend}<span class="total">${fmtNum(v)}</span></div>
-          <div class="chart-mini">${renderChart(m,series,`${period}-${gid++}`)}</div>
+          <div class="chart-mini">${renderChart(lbl,series,`${period}-${gid++}`)}</div>
         </div>`;
       });
     }else{
@@ -510,10 +579,210 @@ setInterval(()=>{const a=document.querySelector('.tab.active').dataset.tab;if(a=
 def dashboard():
     return render_template_string(DASHBOARD_HTML)
 
+ADMIN_HTML = """<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin · Live Dashboard ОсОО «Каравелла»</title>
+<style>
+body{background:#0a0c10;color:#e2e6f0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;padding:24px;margin:0;max-width:1100px;margin:0 auto}
+h1{color:#e8ff47;font-size:24px;margin:0 0 8px}
+.sub{color:#5a6070;font-size:12px;margin-bottom:24px}
+.sub a{color:#47c8ff;text-decoration:none}
+.token-bar{background:#11141b;border:1px solid #232838;padding:14px 18px;border-radius:6px;margin-bottom:24px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.token-bar label{color:#9097a8;font-size:12px}
+.token-bar input{background:#0d1017;border:1px solid #2d3346;color:#e2e6f0;padding:8px 10px;border-radius:4px;font-family:inherit;font-size:13px;flex:1;min-width:180px}
+.token-bar button{background:#e8ff47;color:#0a0c10;border:none;padding:8px 16px;border-radius:4px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
+.token-bar button:hover{filter:brightness(1.1)}
+.toggle-hidden{display:flex;align-items:center;gap:6px;color:#9097a8;font-size:12px;margin-bottom:16px;cursor:pointer;user-select:none}
+.toggle-hidden input{accent-color:#e8ff47}
+.adm-card{background:#11141b;border:1px solid #232838;border-radius:6px;padding:18px 18px 12px;margin-bottom:18px}
+.adm-card h2{color:#47c8ff;font-size:16px;margin:0 0 14px}
+.adm-row{display:grid;grid-template-columns:auto 1fr 2fr auto auto auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #1a1d26}
+.adm-row:first-of-type{border-top:none}
+.adm-row.inactive{opacity:.5}
+.adm-row .move{display:flex;flex-direction:column;gap:2px}
+.adm-row .move button{background:#0d1017;border:1px solid #232838;color:#9097a8;width:24px;height:14px;font-size:9px;cursor:pointer;border-radius:2px;padding:0;line-height:1}
+.adm-row .move button:hover{color:#e8ff47;border-color:#2d3346}
+.adm-row input[type=text]{background:#0d1017;border:1px solid #1a1d26;color:#e2e6f0;padding:6px 8px;border-radius:3px;font-family:inherit;font-size:13px;width:100%;box-sizing:border-box}
+.adm-row input[type=text]:focus{outline:none;border-color:#47c8ff}
+.adm-row .saved{color:#4ade80;font-size:10px;opacity:0;transition:opacity .15s}
+.adm-row .saved.show{opacity:1}
+.adm-row .text-toggle{display:flex;align-items:center;gap:4px;color:#5a6070;font-size:11px;cursor:pointer;user-select:none}
+.adm-row .text-toggle input{accent-color:#e8ff47;cursor:pointer}
+.adm-row .del,.adm-row .restore{background:none;border:1px solid #232838;color:#5a6070;padding:5px 9px;border-radius:3px;cursor:pointer;font-size:12px;font-family:inherit}
+.adm-row .del:hover{color:#ef6464;border-color:rgba(239,100,100,.3)}
+.adm-row .restore{color:#4ade80;border-color:rgba(74,222,128,.3)}
+.adm-row .restore:hover{filter:brightness(1.2)}
+.adm-add{display:grid;grid-template-columns:1fr 2fr auto auto;gap:8px;margin-top:14px;padding-top:14px;border-top:1px dashed #232838;align-items:center}
+.adm-add input{background:#0d1017;border:1px solid #1a1d26;color:#e2e6f0;padding:7px 9px;border-radius:3px;font-family:inherit;font-size:13px;box-sizing:border-box}
+.adm-add input::placeholder{color:#3d4350}
+.adm-add input:focus{outline:none;border-color:#47c8ff}
+.adm-add button{background:#e8ff47;color:#0a0c10;border:none;padding:7px 14px;border-radius:3px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
+.adm-add button:hover{filter:brightness(1.1)}
+.adm-add label{color:#5a6070;font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none}
+.empty-msg{color:#5a6070;text-align:center;padding:40px 0;font-size:14px}
+.col-h{display:grid;grid-template-columns:auto 1fr 2fr auto auto auto;gap:8px;color:#5a6070;font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:0 0 8px;border-bottom:1px solid #1a1d26;margin-bottom:6px}
+.col-h span:nth-child(1){visibility:hidden}
+.hidden{display:none}
+@media (max-width:720px){.adm-row,.adm-add,.col-h{grid-template-columns:1fr}.col-h{display:none}}
+</style>
+</head>
+<body>
+<h1>⚙ Управление показателями</h1>
+<div class="sub">«Каравелла» · <a href="/">← на дашборд</a></div>
+<div class="token-bar" id="tokenBar">
+  <label>Введите admin-token (из Railway → Variables → ADMIN_TOKEN):</label>
+  <input id="tokenInput" type="password" placeholder="токен" autofocus>
+  <button onclick="saveToken()">Войти</button>
+</div>
+<label class="toggle-hidden hidden" id="hiddenToggleWrap">
+  <input type="checkbox" id="showHidden" onchange="render()"> показывать скрытые
+</label>
+<div id="content"></div>
+<script>
+let TOKEN = sessionStorage.getItem('admin_token') || '';
+let DATA = null;
+
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c])}
+
+async function api(path, opts={}){
+  const headers = Object.assign({'Content-Type':'application/json','X-Admin-Token':TOKEN}, opts.headers||{});
+  const r = await fetch(path, Object.assign({}, opts, {headers}));
+  if(r.status === 401){
+    sessionStorage.removeItem('admin_token'); TOKEN=''; showLogin('неверный токен');
+    throw new Error('unauthorized');
+  }
+  if(!r.ok) throw new Error('http '+r.status);
+  return r.json();
+}
+
+function showLogin(msg){
+  document.getElementById('tokenBar').classList.remove('hidden');
+  document.getElementById('hiddenToggleWrap').classList.add('hidden');
+  document.getElementById('content').innerHTML='';
+  if(msg) document.getElementById('tokenBar').querySelector('label').textContent='⚠ '+msg+'. Введите admin-token:';
+}
+
+function saveToken(){
+  const t = document.getElementById('tokenInput').value.trim();
+  if(!t) return;
+  TOKEN = t;
+  sessionStorage.setItem('admin_token', t);
+  load();
+}
+
+async function load(){
+  try{
+    DATA = await api('/admin/api/config');
+    document.getElementById('tokenBar').classList.add('hidden');
+    document.getElementById('hiddenToggleWrap').classList.remove('hidden');
+    render();
+  }catch(e){ /* showLogin already handled */ }
+}
+
+function render(){
+  if(!DATA) return;
+  const showHidden = document.getElementById('showHidden').checked;
+  const bySpec = {};
+  DATA.metrics.forEach(m=>{(bySpec[m.specialist]=bySpec[m.specialist]||[]).push(m)});
+  let h='';
+  for(const sp of DATA.specialists){
+    const items = (bySpec[sp]||[]).filter(m => showHidden || m.is_active);
+    h += `<div class="adm-card"><h2>${esc(sp)}</h2>`;
+    h += '<div class="col-h"><span></span><span>название</span><span>текст вопроса</span><span>тип</span><span></span><span></span></div>';
+    if(items.length===0){
+      h += '<div class="empty-msg">Нет показателей</div>';
+    } else {
+      items.forEach(m=>{
+        const inactive = m.is_active ? '' : ' inactive';
+        h += `<div class="adm-row${inactive}" data-id="${m.id}">
+          <div class="move">
+            <button onclick="move(${m.id},'up')">▲</button>
+            <button onclick="move(${m.id},'down')">▼</button>
+          </div>
+          <input type="text" value="${esc(m.display_name)}" data-field="display" onblur="upd(${m.id},'display',this.value,this)">
+          <input type="text" value="${esc(m.question_text)}" data-field="question" onblur="upd(${m.id},'question',this.value,this)">
+          <label class="text-toggle"><input type="checkbox" ${m.is_text?'checked':''} onchange="upd(${m.id},'is_text',this.checked,this)"> текст</label>
+          <span class="saved">✓ saved</span>
+          ${m.is_active
+            ? `<button class="del" onclick="del(${m.id})">🗑</button>`
+            : `<button class="restore" onclick="restore(${m.id})">↩ восстановить</button>`}
+        </div>`;
+      });
+    }
+    h += `<div class="adm-add">
+      <input type="text" placeholder="название (напр. лиды)" id="new-display-${esc(sp)}">
+      <input type="text" placeholder="текст вопроса (с эмодзи)" id="new-question-${esc(sp)}">
+      <label><input type="checkbox" id="new-text-${esc(sp)}"> текст</label>
+      <button onclick="add('${esc(sp)}')">+ добавить</button>
+    </div>`;
+    h += '</div>';
+  }
+  document.getElementById('content').innerHTML = h;
+}
+
+function flashSaved(el){
+  const row = el.closest('.adm-row'); if(!row) return;
+  const s = row.querySelector('.saved'); if(!s) return;
+  s.classList.add('show'); setTimeout(()=>s.classList.remove('show'), 900);
+}
+
+async function upd(id, field, value, el){
+  try{
+    await api(`/admin/api/metric/${id}/update`, {method:'POST', body: JSON.stringify({[field]: value})});
+    flashSaved(el);
+    const m = DATA.metrics.find(x=>x.id===id);
+    if(m){
+      if(field==='display') m.display_name = value;
+      if(field==='question') m.question_text = value;
+      if(field==='is_text') m.is_text = value;
+    }
+  }catch(e){alert('Не удалось сохранить: '+e.message)}
+}
+
+async function del(id){
+  if(!confirm('Скрыть этот показатель? Старые данные сохранятся, но в опросе он больше не появится.')) return;
+  try{ await api(`/admin/api/metric/${id}/delete`, {method:'POST'}); load(); }
+  catch(e){alert(e.message)}
+}
+
+async function restore(id){
+  try{ await api(`/admin/api/metric/${id}/restore`, {method:'POST'}); load(); }
+  catch(e){alert(e.message)}
+}
+
+async function move(id, direction){
+  try{ await api(`/admin/api/metric/${id}/move`, {method:'POST', body: JSON.stringify({direction})}); load(); }
+  catch(e){alert(e.message)}
+}
+
+async function add(specialist){
+  const display = document.getElementById('new-display-'+specialist).value.trim();
+  const question = document.getElementById('new-question-'+specialist).value.trim();
+  const is_text = document.getElementById('new-text-'+specialist).checked;
+  if(!display || !question){alert('Заполните название и текст вопроса');return}
+  try{
+    await api('/admin/api/metric', {method:'POST', body: JSON.stringify({specialist, display, question, is_text})});
+    load();
+  }catch(e){alert(e.message)}
+}
+
+if(TOKEN) load(); else showLogin('');
+</script>
+</body>
+</html>"""
+
 @app.route("/api/today")
 def api_today():
     rows = get_today_reports()
-    return jsonify([dict(r) for r in rows])
+    display, text_keys = get_config_lookups()
+    return jsonify({
+        "rows": [dict(r) for r in rows],
+        "display_names": display,
+        "text_keys": list(text_keys),
+    })
 
 @app.route("/api/aggregate")
 def api_aggregate():
@@ -521,13 +790,14 @@ def api_aggregate():
     if period not in ("week", "month"):
         period = "week"
     start, end = period_range(period)
+    display, text_keys = get_config_lookups()
     rows = get_period_reports(start, end)
-    data = aggregate_reports(rows)
+    data = aggregate_reports(rows, text_keys)
     length = (end - start).days + 1
     prev_end = start - timedelta(days=1)
     prev_start = prev_end - timedelta(days=length - 1)
     prev_rows = get_period_reports(prev_start, prev_end)
-    prev_data = aggregate_reports(prev_rows)
+    prev_data = aggregate_reports(prev_rows, text_keys)
     prev_metrics = {sp: b["metrics"] for sp, b in prev_data.items()}
     return jsonify({
         "period": period,
@@ -537,11 +807,159 @@ def api_aggregate():
         "prev_end": prev_end.isoformat(),
         "specialists": data,
         "prev_specialists": prev_metrics,
+        "display_names": display,
+        "text_keys": list(text_keys),
     })
 
 @app.route("/health")
 def health():
     return "ok"
+
+def _check_admin_token():
+    if not ADMIN_TOKEN:
+        abort(503, "Admin not configured")
+    token = request.args.get("token") or request.headers.get("X-Admin-Token") or ""
+    if not hmac.compare_digest(token, ADMIN_TOKEN):
+        abort(401, "Invalid token")
+
+def _gen_metric_key(specialist, display, cur):
+    base = (display or "metric").lower().strip().replace(" ", "_")[:40]
+    if not base:
+        base = "metric"
+    candidate = base
+    counter = 2
+    while True:
+        cur.execute(
+            "SELECT 1 FROM metrics_config WHERE specialist=%s AND metric_key=%s",
+            (specialist, candidate),
+        )
+        if not cur.fetchone():
+            return candidate
+        candidate = f"{base}_{counter}"
+        counter += 1
+
+@app.route("/admin")
+def admin_page():
+    if not ADMIN_TOKEN:
+        return "Admin disabled. Set ADMIN_TOKEN env var on Railway and redeploy.", 503
+    return render_template_string(ADMIN_HTML)
+
+@app.route("/admin/api/config")
+def admin_config():
+    _check_admin_token()
+    rows = get_admin_config()
+    return jsonify({
+        "specialists": SPECIALIST_ORDER,
+        "metrics": [dict(r) for r in rows],
+    })
+
+@app.route("/admin/api/metric", methods=["POST"])
+def admin_create():
+    _check_admin_token()
+    data = request.get_json(silent=True) or {}
+    specialist = (data.get("specialist") or "").strip()
+    display = (data.get("display") or "").strip()
+    question = (data.get("question") or "").strip()
+    is_text = bool(data.get("is_text"))
+    if specialist not in SPECIALIST_ORDER:
+        abort(400, "Unknown specialist")
+    if not display or not question:
+        abort(400, "display and question are required")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM metrics_config WHERE specialist = %s",
+                (specialist,),
+            )
+            new_pos = cur.fetchone()[0]
+            key = _gen_metric_key(specialist, display, cur)
+            cur.execute(
+                "INSERT INTO metrics_config (specialist, metric_key, display_name, question_text, position, is_text, is_active) "
+                "VALUES (%s,%s,%s,%s,%s,%s,TRUE) RETURNING id",
+                (specialist, key, display, question, new_pos, is_text),
+            )
+            new_id = cur.fetchone()[0]
+        conn.commit()
+    return jsonify({"id": new_id, "metric_key": key, "ok": True})
+
+@app.route("/admin/api/metric/<int:metric_id>/update", methods=["POST"])
+def admin_update(metric_id):
+    _check_admin_token()
+    data = request.get_json(silent=True) or {}
+    fields = {}
+    if "display" in data:
+        v = (data["display"] or "").strip()
+        if not v:
+            abort(400, "display cannot be empty")
+        fields["display_name"] = v
+    if "question" in data:
+        v = (data["question"] or "").strip()
+        if not v:
+            abort(400, "question cannot be empty")
+        fields["question_text"] = v
+    if "is_text" in data:
+        fields["is_text"] = bool(data["is_text"])
+    if not fields:
+        abort(400, "no fields to update")
+    sets = ", ".join(f"{k} = %s" for k in fields)
+    params = list(fields.values()) + [metric_id]
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"UPDATE metrics_config SET {sets} WHERE id = %s", params)
+            ok = cur.rowcount > 0
+        conn.commit()
+    return jsonify({"ok": ok})
+
+@app.route("/admin/api/metric/<int:metric_id>/delete", methods=["POST"])
+def admin_delete(metric_id):
+    _check_admin_token()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE metrics_config SET is_active = FALSE WHERE id = %s", (metric_id,))
+            ok = cur.rowcount > 0
+        conn.commit()
+    return jsonify({"ok": ok})
+
+@app.route("/admin/api/metric/<int:metric_id>/restore", methods=["POST"])
+def admin_restore(metric_id):
+    _check_admin_token()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE metrics_config SET is_active = TRUE WHERE id = %s", (metric_id,))
+            ok = cur.rowcount > 0
+        conn.commit()
+    return jsonify({"ok": ok})
+
+@app.route("/admin/api/metric/<int:metric_id>/move", methods=["POST"])
+def admin_move(metric_id):
+    _check_admin_token()
+    direction = (request.get_json(silent=True) or {}).get("direction")
+    if direction not in ("up", "down"):
+        abort(400, "direction must be 'up' or 'down'")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT specialist FROM metrics_config WHERE id = %s", (metric_id,))
+            row = cur.fetchone()
+            if not row:
+                abort(404, "not found")
+            specialist = row[0]
+            cur.execute(
+                "SELECT id FROM metrics_config WHERE specialist = %s AND is_active = TRUE "
+                "ORDER BY position ASC, id ASC",
+                (specialist,),
+            )
+            ids = [r[0] for r in cur.fetchall()]
+            if metric_id not in ids:
+                return jsonify({"ok": False, "reason": "inactive metric cannot be moved"})
+            idx = ids.index(metric_id)
+            new_idx = idx - 1 if direction == "up" else idx + 1
+            if new_idx < 0 or new_idx >= len(ids):
+                return jsonify({"ok": False, "reason": "edge"})
+            ids[idx], ids[new_idx] = ids[new_idx], ids[idx]
+            for pos, mid in enumerate(ids):
+                cur.execute("UPDATE metrics_config SET position = %s WHERE id = %s", (pos, mid))
+        conn.commit()
+    return jsonify({"ok": True})
 
 def run_flask():
     app.run(host="0.0.0.0", port=PORT)
