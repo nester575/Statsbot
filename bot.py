@@ -289,25 +289,39 @@ summary:hover{color:#e2e6f0}
 .cmt-date{color:#5a6070;font-size:11px;margin-right:8px}
 .cmt-metric{color:#47c8ff;font-size:11px;margin-right:8px}
 .hidden{display:none}
-.metric-row{display:flex;justify-content:space-between;align-items:baseline;margin:16px 0 6px;padding:0 4px;gap:8px;flex-wrap:wrap}
-.metric-row .label{color:#9097a8;font-size:13px;text-transform:lowercase;flex:1;min-width:120px}
-.metric-row .right{display:flex;align-items:baseline;gap:10px}
-.metric-row .avg{color:#5a6070;font-size:11px}
-.metric-row .total{color:#e8ff47;font-size:18px;font-weight:bold}
-.trend{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 7px;border-radius:10px;font-weight:600}
+.today-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #232838;gap:12px}
+.today-row:last-child{border-bottom:none}
+.today-row .label{color:#5a6070;font-size:13px;flex:1;min-width:0}
+.today-row .value{flex:0 0 140px;text-align:right;color:#e2e6f0;font-size:14px;word-break:break-word}
+.today-row .value .num{color:#e8ff47;font-size:20px;font-weight:bold}
+.metric-row{display:grid;grid-template-columns:120px minmax(0,1fr) auto 130px;gap:14px;align-items:center;padding:14px 0;border-top:1px solid #1a1d26}
+.metric-row:first-of-type{border-top:none}
+.metric-row .label{color:#9097a8;font-size:13px;text-transform:lowercase}
+.metric-row .days{display:flex;gap:4px;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin;scrollbar-color:#2d3346 transparent}
+.metric-row .days::-webkit-scrollbar{height:5px}
+.metric-row .days::-webkit-scrollbar-thumb{background:#2d3346;border-radius:2px}
+.day-cell{flex:0 0 auto;min-width:42px;text-align:center;padding:5px 6px;border-radius:5px;background:#0d1017;border:1px solid #1a1d26}
+.day-cell .d{font-size:9px;color:#5a6070;line-height:1.1;letter-spacing:.3px}
+.day-cell .v{font-size:13px;color:#e2e6f0;font-weight:600;line-height:1.3;margin-top:3px}
+.day-cell.empty{background:transparent;border-style:dashed;border-color:#1a1d26}
+.day-cell.empty .v{color:#2d3346;font-weight:400}
+.metric-row .stats{display:flex;align-items:center;gap:10px;justify-content:flex-end}
+.metric-row .stats .avg{color:#5a6070;font-size:11px;white-space:nowrap}
+.metric-row .stats .total{color:#e8ff47;font-size:22px;font-weight:bold;min-width:48px;text-align:right}
+.trend{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 7px;border-radius:10px;font-weight:600;white-space:nowrap}
 .trend.up{color:#4ade80;background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.25)}
 .trend.down{color:#ef6464;background:rgba(239,100,100,.1);border:1px solid rgba(239,100,100,.25)}
 .trend.flat{color:#5a6070;background:rgba(90,96,112,.1);border:1px solid #232838}
 .trend.new{color:#47c8ff;background:rgba(71,200,255,.1);border:1px solid rgba(71,200,255,.25)}
-.chart{position:relative;background:#0d1017;border:1px solid #1a1d26;border-radius:6px;padding:12px 8px 6px;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
-.chart:hover{transform:scale(1.02);border-color:#2d3346;box-shadow:0 8px 24px rgba(0,0,0,.4)}
-.chart svg{width:100%;height:90px;display:block;overflow:visible}
-.chart .axis{display:flex;justify-content:space-between;color:#5a6070;font-size:10px;margin-top:4px;padding:0 4px}
-.chart .dot{fill:#e8ff47;stroke:#0d1017;stroke-width:2;cursor:pointer;transition:r .15s ease}
-.chart .dot:hover{r:5}
-.chart .line{fill:none;stroke:#e8ff47;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
-.chart .area{opacity:.85}
-.chart-empty{color:#5a6070;font-size:11px;text-align:center;padding:18px 0}
+.chart-mini{background:#0d1017;border:1px solid #1a1d26;border-radius:6px;height:54px;padding:4px;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;position:relative}
+.chart-mini:hover{transform:scale(1.08);border-color:#2d3346;box-shadow:0 6px 20px rgba(0,0,0,.5);z-index:1}
+.chart-mini svg{width:100%;height:100%;display:block;overflow:visible}
+.chart-mini .dot{fill:#e8ff47;stroke:#0d1017;stroke-width:1.5;cursor:pointer;transition:r .15s ease}
+.chart-mini .dot:hover{r:4}
+.chart-mini .line{fill:none;stroke:#e8ff47;stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}
+.chart-mini .area{opacity:.85}
+.chart-empty{color:#2d3346;font-size:10px;text-align:center;padding-top:16px}
+@media (max-width:720px){.metric-row{grid-template-columns:1fr;gap:8px}.metric-row .stats{justify-content:flex-start}.chart-mini{width:100%;height:60px}}
 #tt{position:fixed;background:#1a1d26;color:#e2e6f0;border:1px solid #2d3346;padding:6px 10px;border-radius:4px;font-size:12px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:100;white-space:nowrap}
 #tt.show{opacity:1}
 #tt .tt-date{color:#5a6070;font-size:10px;margin-bottom:2px}
@@ -352,19 +366,35 @@ async function loadToday(){
   let h='';
   for(const n of SP){
     if(!bp[n]) continue;
-    h+=`<div class="card"><div class="name">${esc(n)}</div><table>`;
+    h+=`<div class="card"><div class="name">${esc(n)}</div>`;
     bp[n].forEach(r=>{
       const isN=!TEXT_METRICS.has(r.metric)&&!isNaN(parseFloat(r.value))&&isFinite(r.value);
-      h+=`<tr><td style="color:#5a6070">${esc(r.metric)}</td><td>${isN?`<span class="num">${fmtNum(r.value)}</span>`:esc(r.value)}</td></tr>`;
+      const valHtml=isN?`<span class="num">${fmtNum(r.value)}</span>`:esc(r.value);
+      h+=`<div class="today-row"><span class="label">${esc(r.metric)}</span><span class="value">${valHtml}</span></div>`;
     });
-    h+='</table></div>';
+    h+='</div>';
   }
   document.getElementById('today-data').innerHTML=h||'<div class="card empty">Отчётов за сегодня пока нет</div>';
 }
 
-function renderChart(metric, points, gid){
-  if(!points||points.length===0)return '<div class="chart-empty">Нет данных для графика</div>';
-  const W=600,H=90,PX=8,PY=12;
+function getWorkingDays(startStr,endStr){
+  const days=[];
+  const d=new Date(startStr+'T00:00:00');
+  const end=new Date(endStr+'T00:00:00');
+  while(d<=end){
+    const dow=d.getDay();
+    if(dow!==0&&dow!==6){
+      const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),da=String(d.getDate()).padStart(2,'0');
+      days.push(`${y}-${m}-${da}`);
+    }
+    d.setDate(d.getDate()+1);
+  }
+  return days;
+}
+
+function renderChart(metric,points,gid){
+  if(!points||points.length===0)return '<div class="chart-empty">нет точек</div>';
+  const W=120,H=44,PX=4,PY=4;
   const vals=points.map(p=>p.value);
   const maxV=Math.max(...vals);
   const minV=Math.min(0,Math.min(...vals));
@@ -372,24 +402,22 @@ function renderChart(metric, points, gid){
   const n=points.length;
   const x=i=>n===1?W/2:PX+(i/(n-1))*(W-2*PX);
   const y=v=>H-PY-((v-minV)/range)*(H-2*PY);
-  let line='',area='',dots='';
+  let line='',area='';
   if(n>=2){
     line=points.map((p,i)=>`${i===0?'M':'L'}${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ');
     area=line+` L${x(n-1).toFixed(1)} ${H-PY} L${x(0).toFixed(1)} ${H-PY} Z`;
   }
-  dots=points.map((p,i)=>`<circle class="dot" cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3.5" data-d="${p.date}" data-v="${p.value}" data-m="${esc(metric)}"/>`).join('');
-  const firstDate=fmtDate(points[0].date);
-  const lastDate=fmtDate(points[n-1].date);
+  const dots=points.map((p,i)=>`<circle class="dot" cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="2.5" data-d="${p.date}" data-v="${p.value}" data-m="${esc(metric)}"/>`).join('');
   const grad=`g${gid}`;
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
     <defs><linearGradient id="${grad}" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#e8ff47" stop-opacity=".35"/>
+      <stop offset="0%" stop-color="#e8ff47" stop-opacity=".4"/>
       <stop offset="100%" stop-color="#e8ff47" stop-opacity="0"/>
     </linearGradient></defs>
     ${area?`<path class="area" d="${area}" fill="url(#${grad})"/>`:''}
     ${line?`<path class="line" d="${line}"/>`:''}
     ${dots}
-  </svg><div class="axis"><span>${firstDate}</span>${n>1?`<span>${lastDate}</span>`:''}</div>`;
+  </svg>`;
 }
 
 async function loadAggregate(period){
@@ -403,8 +431,10 @@ async function loadAggregate(period){
     h+=`<div class="card"><div class="name">${esc(n)}<span class="days">${b.days_submitted} ${b.days_submitted===1?'день':'дн.'} с отчётами</span></div>`;
     if(metricsArr.length){
       const prevSp=(d.prev_specialists&&d.prev_specialists[n])||{};
+      const allDays=getWorkingDays(d.start,d.end);
       metricsArr.forEach(([m,v])=>{
         const series=(b.series&&b.series[m])||[];
+        const byDate={};series.forEach(p=>{byDate[p.date]=p.value});
         const avg=(b.averages&&b.averages[m])??null;
         const prev=prevSp[m]??null;
         let trend='';
@@ -418,8 +448,17 @@ async function loadAggregate(period){
           else trend=`<span class="trend down">↓ ${abs.toFixed(0)}%</span>`;
         }
         const avgHtml=avg!==null?`<span class="avg">~${fmtNum(avg)}/день</span>`:'';
-        h+=`<div class="metric-row"><span class="label">${esc(m)}</span><span class="right">${avgHtml}${trend}<span class="total">${fmtNum(v)}</span></span></div>`;
-        h+=`<div class="chart">${renderChart(m,series,`${period}-${gid++}`)}</div>`;
+        const daysHtml=allDays.map(dd=>{
+          const has=byDate[dd]!==undefined;
+          const val=has?fmtNum(byDate[dd]):'—';
+          return `<div class="day-cell${has?'':' empty'}"><div class="d">${fmtDate(dd)}</div><div class="v">${val}</div></div>`;
+        }).join('');
+        h+=`<div class="metric-row">
+          <span class="label">${esc(m)}</span>
+          <div class="days">${daysHtml}</div>
+          <div class="stats">${avgHtml}${trend}<span class="total">${fmtNum(v)}</span></div>
+          <div class="chart-mini">${renderChart(m,series,`${period}-${gid++}`)}</div>
+        </div>`;
       });
     }else{
       h+='<div class="empty" style="padding:8px">Нет числовых метрик</div>';
