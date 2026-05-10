@@ -18,6 +18,15 @@ h1{color:#e8ff47;font-size:24px;margin:0 0 8px}
 .toggle-hidden input{accent-color:#e8ff47}
 .adm-card{background:#11141b;border:1px solid #232838;border-radius:6px;padding:18px 18px 12px;margin-bottom:18px}
 .adm-card h2{color:#47c8ff;font-size:16px;margin:0 0 14px}
+.orphan-btn{background:#47c8ff;color:#0a0c10;border:none;padding:4px 10px;border-radius:3px;font-weight:600;font-family:inherit;font-size:11px;cursor:pointer;margin-left:8px;vertical-align:middle}
+.orphan-btn:hover{filter:brightness(1.1)}
+.orphan-form{display:none;margin:0 0 14px;padding:10px 12px;background:#0d1017;border:1px solid rgba(71,200,255,.4);border-radius:5px;gap:8px;align-items:center}
+.orphan-form.show{display:flex}
+.orphan-form .new-orphan-id{flex:1;background:#11141b;border:1px solid #1a1d26;color:#e2e6f0;padding:6px 8px;border-radius:3px;font-family:inherit;font-size:13px;box-sizing:border-box}
+.orphan-form .new-orphan-id:focus{outline:none;border-color:#47c8ff}
+.orphan-form button{background:#47c8ff;color:#0a0c10;border:none;padding:6px 12px;border-radius:3px;font-weight:600;cursor:pointer;font-family:inherit;font-size:12px}
+.orphan-form button.cancel{background:none;color:#5a6070;border:1px solid #232838}
+.orphan-form button.cancel:hover{color:#e2e6f0}
 .adm-row{display:grid;grid-template-columns:auto 1.2fr 2fr auto 70px 70px auto auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #1a1d26}
 .adm-row:first-of-type{border-top:none}
 .adm-row.inactive{opacity:.5}
@@ -218,7 +227,17 @@ function renderMetrics(){
     const sp = g.name;
     const items = (bySpec[sp]||[]).filter(m => showHidden || m.is_active);
     const tag = g.is_active ? '' : ' <span style="color:#5a6070;font-size:11px;font-weight:normal">(сотрудник скрыт)</span>';
-    h += `<div class="adm-card" data-spec="${esc(sp)}"><h2>📊 ${esc(sp)} — показатели${tag}</h2>`;
+    const orphanCtrl = g.orphan
+      ? ` <button class="orphan-btn" data-action="orphan-toggle">✚ создать сотрудника</button>`
+      : '';
+    h += `<div class="adm-card" data-spec="${esc(sp)}"><h2>📊 ${esc(sp)} — показатели${tag}${orphanCtrl}</h2>`;
+    if (g.orphan) {
+      h += `<div class="orphan-form" data-spec="${esc(sp)}">
+        <input type="text" class="new-orphan-id" placeholder="Telegram ID (например 123456789)">
+        <button data-action="orphan-submit">создать</button>
+        <button data-action="orphan-cancel" class="cancel">отмена</button>
+      </div>`;
+    }
     h += '<div class="col-h"><span></span><span>название</span><span>текст вопроса</span><span>тип</span><span>план/нед</span><span>план/мес</span><span></span><span></span></div>';
     if(items.length===0){
       h += '<div class="empty-msg">Нет показателей</div>';
@@ -360,6 +379,14 @@ async function addSp(){
   }catch(e){toast('Ошибка: '+e.message,'err')}
 }
 
+async function createOrphanSpecialist(name, tgId){
+  try{
+    await api('/admin/api/specialist', {method:'POST', body: JSON.stringify({name, telegram_id: tgId})});
+    loadAll();
+    toast(`✓ ${name} создан и привязан к существующим показателям`, 'ok');
+  }catch(e){toast('Ошибка: '+e.message,'err')}
+}
+
 async function saveReminderTime(){
   const t = document.getElementById('reminderTime').value;
   try{
@@ -406,6 +433,28 @@ document.addEventListener('click', e=>{
     case 'sp-test': sendReminder(name); break;
     case 'sp-add': addSp(); break;
     case 'send-all': sendReminder('all'); break;
+    case 'orphan-toggle': {
+      const card = t.closest('.adm-card');
+      const form = card && card.querySelector('.orphan-form');
+      if (!form) break;
+      form.classList.toggle('show');
+      if (form.classList.contains('show')) form.querySelector('.new-orphan-id').focus();
+      break;
+    }
+    case 'orphan-submit': {
+      const form = t.closest('.orphan-form');
+      const name = form.dataset.spec;
+      const tg = form.querySelector('.new-orphan-id').value.trim();
+      if (!tg) { toast('Введите Telegram ID', 'err'); return; }
+      createOrphanSpecialist(name, tg);
+      break;
+    }
+    case 'orphan-cancel': {
+      const form = t.closest('.orphan-form');
+      form.classList.remove('show');
+      form.querySelector('.new-orphan-id').value = '';
+      break;
+    }
   }
 });
 
