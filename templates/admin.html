@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin · Live Dashboard ОсОО «Каравелла»</title>
+<style>
+body{background:#0a0c10;color:#e2e6f0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;padding:24px;margin:0;max-width:1100px;margin:0 auto}
+h1{color:#e8ff47;font-size:24px;margin:0 0 8px}
+.sub{color:#5a6070;font-size:12px;margin-bottom:24px}
+.sub a{color:#47c8ff;text-decoration:none}
+.token-bar{background:#11141b;border:1px solid #232838;padding:14px 18px;border-radius:6px;margin-bottom:24px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.token-bar label{color:#9097a8;font-size:12px}
+.token-bar input{background:#0d1017;border:1px solid #2d3346;color:#e2e6f0;padding:8px 10px;border-radius:4px;font-family:inherit;font-size:13px;flex:1;min-width:180px}
+.token-bar button{background:#e8ff47;color:#0a0c10;border:none;padding:8px 16px;border-radius:4px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
+.token-bar button:hover{filter:brightness(1.1)}
+.toggle-hidden{display:flex;align-items:center;gap:6px;color:#9097a8;font-size:12px;margin-bottom:16px;cursor:pointer;user-select:none}
+.toggle-hidden input{accent-color:#e8ff47}
+.adm-card{background:#11141b;border:1px solid #232838;border-radius:6px;padding:18px 18px 12px;margin-bottom:18px}
+.adm-card h2{color:#47c8ff;font-size:16px;margin:0 0 14px}
+.adm-row{display:grid;grid-template-columns:auto 1.2fr 2fr auto 70px 70px auto auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid #1a1d26}
+.adm-row:first-of-type{border-top:none}
+.adm-row.inactive{opacity:.5}
+.adm-row .move{display:flex;flex-direction:column;gap:2px}
+.adm-row .move button{background:#0d1017;border:1px solid #232838;color:#9097a8;width:24px;height:14px;font-size:9px;cursor:pointer;border-radius:2px;padding:0;line-height:1}
+.adm-row .move button:hover{color:#e8ff47;border-color:#2d3346}
+.adm-row input[type=text],.adm-row input[type=number]{background:#0d1017;border:1px solid #1a1d26;color:#e2e6f0;padding:6px 8px;border-radius:3px;font-family:inherit;font-size:13px;width:100%;box-sizing:border-box}
+.adm-row input[type=number]{font-size:12px;text-align:right}
+.adm-row input:focus{outline:none;border-color:#47c8ff}
+.adm-row input:disabled{opacity:.3;cursor:not-allowed}
+.adm-row .saved{color:#4ade80;font-size:10px;opacity:0;transition:opacity .15s}
+.adm-row .saved.show{opacity:1}
+.adm-row .text-toggle{display:flex;align-items:center;gap:4px;color:#5a6070;font-size:11px;cursor:pointer;user-select:none}
+.adm-row .text-toggle input{accent-color:#e8ff47;cursor:pointer}
+.adm-row .del,.adm-row .restore,.adm-row .test-btn{background:none;border:1px solid #232838;color:#5a6070;padding:5px 9px;border-radius:3px;cursor:pointer;font-size:12px;font-family:inherit}
+.adm-row .del:hover{color:#ef6464;border-color:rgba(239,100,100,.3)}
+.adm-row .restore{color:#4ade80;border-color:rgba(74,222,128,.3)}
+.adm-row .restore:hover{filter:brightness(1.2)}
+.adm-row .test-btn:hover{color:#47c8ff;border-color:rgba(71,200,255,.3)}
+.adm-add{display:grid;grid-template-columns:1.2fr 2fr auto 70px 70px auto auto;gap:8px;margin-top:14px;padding-top:14px;border-top:1px dashed #232838;align-items:center}
+.adm-add input{background:#0d1017;border:1px solid #1a1d26;color:#e2e6f0;padding:7px 9px;border-radius:3px;font-family:inherit;font-size:13px;box-sizing:border-box;width:100%}
+.adm-add input[type=number]{font-size:12px;text-align:right}
+.adm-add input::placeholder{color:#3d4350}
+.adm-add input:focus{outline:none;border-color:#47c8ff}
+.adm-add button{background:#e8ff47;color:#0a0c10;border:none;padding:7px 14px;border-radius:3px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
+.adm-add button:hover{filter:brightness(1.1)}
+.adm-add label{color:#5a6070;font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;white-space:nowrap}
+.empty-msg{color:#5a6070;text-align:center;padding:40px 0;font-size:14px}
+.col-h{display:grid;grid-template-columns:auto 1.2fr 2fr auto 70px 70px auto auto;gap:8px;color:#5a6070;font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:0 0 8px;border-bottom:1px solid #1a1d26;margin-bottom:6px}
+.col-h span:nth-child(1){visibility:hidden}
+.hidden{display:none}
+.set-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.set-row label{color:#9097a8;font-size:13px}
+.set-row input[type=time],.set-row input[type=text]{background:#0d1017;border:1px solid #2d3346;color:#e2e6f0;padding:8px 10px;border-radius:4px;font-family:inherit;font-size:14px;width:120px}
+.set-row button{background:#e8ff47;color:#0a0c10;border:none;padding:8px 14px;border-radius:4px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
+.set-row .hint{color:#5a6070;font-size:11px}
+.sp-row{display:grid;grid-template-columns:auto 1fr 1fr auto auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid #1a1d26}
+.sp-row:first-of-type{border-top:none}
+.sp-row.inactive{opacity:.5}
+.sp-row input[type=text]{background:#0d1017;border:1px solid #1a1d26;color:#e2e6f0;padding:6px 8px;border-radius:3px;font-family:inherit;font-size:13px;width:100%;box-sizing:border-box}
+.sp-row input:focus{outline:none;border-color:#47c8ff}
+.sp-add{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-top:14px;padding-top:14px;border-top:1px dashed #232838;align-items:center}
+.sp-add input{background:#0d1017;border:1px solid #1a1d26;color:#e2e6f0;padding:7px 9px;border-radius:3px;font-family:inherit;font-size:13px;width:100%;box-sizing:border-box}
+.sp-add input::placeholder{color:#3d4350}
+.sp-add input:focus{outline:none;border-color:#47c8ff}
+.sp-add button{background:#e8ff47;color:#0a0c10;border:none;padding:7px 14px;border-radius:3px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
+.send-all{background:#47c8ff;color:#0a0c10;border:none;padding:6px 12px;border-radius:3px;font-weight:600;cursor:pointer;font-family:inherit;font-size:12px;margin-left:auto}
+.send-all:hover{filter:brightness(1.1)}
+.toast{position:fixed;bottom:24px;right:24px;background:#11141b;border:1px solid #232838;color:#e2e6f0;padding:12px 18px;border-radius:6px;font-size:13px;opacity:0;transition:opacity .2s;z-index:200;max-width:360px}
+.toast.show{opacity:1}
+.toast.ok{border-color:rgba(74,222,128,.4)}
+.toast.err{border-color:rgba(239,100,100,.4)}
+@media (max-width:720px){.adm-row,.adm-add,.col-h,.sp-row,.sp-add{grid-template-columns:1fr}.col-h{display:none}}
+</style>
+</head>
+<body>
+<h1>⚙ Управление</h1>
+<div class="sub">«Каравелла» · <a href="/">← на дашборд</a></div>
+<div class="token-bar" id="tokenBar">
+  <label>Введите admin-token (из Railway → Variables → ADMIN_TOKEN):</label>
+  <input id="tokenInput" type="password" placeholder="токен" autofocus>
+  <button id="loginBtn">Войти</button>
+</div>
+<div id="content" class="hidden">
+  <div class="adm-card">
+    <h2>⚙ Настройки</h2>
+    <div class="set-row">
+      <label>Время опроса:</label>
+      <input id="reminderTime" type="time" value="09:00">
+      <button id="saveTimeBtn">Сохранить</button>
+      <span class="hint">Дни: пн–пт. Применяется без рестарта.</span>
+    </div>
+  </div>
+  <div class="adm-card">
+    <h2 style="display:flex;align-items:center">👥 Сотрудники
+      <button class="send-all" data-action="send-all">📤 Отправить всем</button>
+    </h2>
+    <label class="toggle-hidden">
+      <input type="checkbox" id="showHiddenSp"> показывать скрытых
+    </label>
+    <div id="spList"></div>
+  </div>
+  <div class="adm-card-wrap">
+    <label class="toggle-hidden">
+      <input type="checkbox" id="showHidden"> показывать скрытые показатели
+    </label>
+  </div>
+  <div id="metrics"></div>
+</div>
+<div id="toast" class="toast"></div>
+<script>
+let TOKEN = sessionStorage.getItem('admin_token') || '';
+let DATA = null;
+let SPECIALISTS = null;
+
+// HTML escape (for inserting values into element text/attribute contexts).
+// Single quote becomes &#39; — works correctly inside attr="..." and as text;
+// raw values can be safely placed in data-* attributes.
+function esc(s){return String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c])}
+
+function toast(msg, kind){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show '+(kind||'');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>{t.classList.remove('show')}, 3500);
+}
+
+async function api(path, opts={}){
+  const headers = Object.assign({'Content-Type':'application/json','X-Admin-Token':TOKEN}, opts.headers||{});
+  const r = await fetch(path, Object.assign({}, opts, {headers}));
+  if(r.status === 401){
+    sessionStorage.removeItem('admin_token'); TOKEN=''; showLogin('неверный токен');
+    throw new Error('unauthorized');
+  }
+  if(!r.ok){
+    let detail='';
+    try{ const j = await r.json(); detail = j.message||j.error||''; }catch(e){}
+    throw new Error('http '+r.status+(detail?': '+detail:''));
+  }
+  return r.json();
+}
+
+function showLogin(msg){
+  document.getElementById('tokenBar').classList.remove('hidden');
+  document.getElementById('content').classList.add('hidden');
+  if(msg) document.getElementById('tokenBar').querySelector('label').textContent='⚠ '+msg+'. Введите admin-token:';
+}
+
+function saveToken(){
+  const t = document.getElementById('tokenInput').value.trim();
+  if(!t) return;
+  TOKEN = t;
+  sessionStorage.setItem('admin_token', t);
+  loadAll();
+}
+
+async function loadAll(){
+  try{
+    const [cfg, sp, settings] = await Promise.all([
+      api('/admin/api/config'),
+      api('/admin/api/specialists'),
+      api('/admin/api/settings'),
+    ]);
+    DATA = cfg; SPECIALISTS = sp;
+    document.getElementById('tokenBar').classList.add('hidden');
+    document.getElementById('content').classList.remove('hidden');
+    document.getElementById('reminderTime').value = settings.reminder_time || '09:00';
+    renderSpecialists();
+    renderMetrics();
+  }catch(e){ /* showLogin handled if 401 */ }
+}
+
+function renderSpecialists(){
+  if(!SPECIALISTS) return;
+  const showHidden = document.getElementById('showHiddenSp').checked;
+  const items = SPECIALISTS.specialists.filter(s => showHidden || s.is_active);
+  let h='';
+  if(items.length===0){
+    h = '<div class="empty-msg">Нет сотрудников</div>';
+  } else {
+    items.forEach(s=>{
+      const inactive = s.is_active ? '' : ' inactive';
+      const testBtn = s.is_active
+        ? `<button class="test-btn" data-action="sp-test" data-name="${esc(s.name)}">📤 тест</button>`
+        : '<span></span>';
+      const actionBtn = s.is_active
+        ? `<button class="del" data-action="sp-del" data-id="${s.id}">🗑</button>`
+        : `<button class="restore" data-action="sp-restore" data-id="${s.id}">↩</button>`;
+      h += `<div class="sp-row${inactive}">
+        <div class="move">
+          <button data-action="sp-move" data-id="${s.id}" data-dir="up">▲</button>
+          <button data-action="sp-move" data-id="${s.id}" data-dir="down">▼</button>
+        </div>
+        <input type="text" class="f-sp-name" data-id="${s.id}" value="${esc(s.name)}" placeholder="имя">
+        <input type="text" class="f-sp-tg" data-id="${s.id}" value="${esc(s.telegram_id)}" placeholder="Telegram ID">
+        ${testBtn}
+        ${actionBtn}
+      </div>`;
+    });
+  }
+  h += `<div class="sp-add">
+    <input type="text" class="new-sp-name" placeholder="имя (напр. Иван)">
+    <input type="text" class="new-sp-id" placeholder="Telegram ID (напр. 123456789)">
+    <button data-action="sp-add">+ добавить</button>
+  </div>`;
+  document.getElementById('spList').innerHTML = h;
+}
+
+function renderMetrics(){
+  if(!DATA) return;
+  const showHidden = document.getElementById('showHidden').checked;
+  const bySpec = {};
+  DATA.metrics.forEach(m=>{(bySpec[m.specialist]=bySpec[m.specialist]||[]).push(m)});
+  const groups = DATA.specialist_groups || DATA.specialists.map(n=>({name:n,is_active:true}));
+  let h='';
+  for(const g of groups){
+    const sp = g.name;
+    const items = (bySpec[sp]||[]).filter(m => showHidden || m.is_active);
+    const tag = g.is_active ? '' : ' <span style="color:#5a6070;font-size:11px;font-weight:normal">(сотрудник скрыт)</span>';
+    h += `<div class="adm-card" data-spec="${esc(sp)}"><h2>📊 ${esc(sp)} — показатели${tag}</h2>`;
+    h += '<div class="col-h"><span></span><span>название</span><span>текст вопроса</span><span>тип</span><span>план/нед</span><span>план/мес</span><span></span><span></span></div>';
+    if(items.length===0){
+      h += '<div class="empty-msg">Нет показателей</div>';
+    } else {
+      items.forEach(m=>{
+        const inactive = m.is_active ? '' : ' inactive';
+        const planDisabled = m.is_text ? 'disabled' : '';
+        const pw = m.plan_week !== null && m.plan_week !== undefined ? m.plan_week : '';
+        const pm = m.plan_month !== null && m.plan_month !== undefined ? m.plan_month : '';
+        const action = m.is_active
+          ? `<button class="del" data-action="m-del" data-id="${m.id}">🗑</button>`
+          : `<button class="restore" data-action="m-restore" data-id="${m.id}">↩</button>`;
+        h += `<div class="adm-row${inactive}" data-id="${m.id}">
+          <div class="move">
+            <button data-action="m-move" data-id="${m.id}" data-dir="up">▲</button>
+            <button data-action="m-move" data-id="${m.id}" data-dir="down">▼</button>
+          </div>
+          <input type="text" class="f-display" data-id="${m.id}" value="${esc(m.display_name)}">
+          <input type="text" class="f-question" data-id="${m.id}" value="${esc(m.question_text)}">
+          <label class="text-toggle"><input type="checkbox" class="f-is-text" data-id="${m.id}" ${m.is_text?'checked':''}> текст</label>
+          <input type="number" class="f-pw" data-id="${m.id}" step="any" min="0" value="${pw}" placeholder="—" ${planDisabled}>
+          <input type="number" class="f-pm" data-id="${m.id}" step="any" min="0" value="${pm}" placeholder="—" ${planDisabled}>
+          <span class="saved">✓</span>
+          ${action}
+        </div>`;
+      });
+    }
+    h += `<div class="adm-add" data-spec="${esc(sp)}">
+      <input type="text" class="new-display" placeholder="название (напр. лиды)">
+      <input type="text" class="new-question" placeholder="текст вопроса (с эмодзи)">
+      <label><input type="checkbox" class="new-text"> текст</label>
+      <input type="number" class="new-pw" step="any" min="0" placeholder="нед">
+      <input type="number" class="new-pm" step="any" min="0" placeholder="мес">
+      <span></span>
+      <button data-action="m-add">+ добавить</button>
+    </div>`;
+    h += '</div>';
+  }
+  document.getElementById('metrics').innerHTML = h;
+}
+
+function flashSaved(el){
+  const row = el.closest('.adm-row, .sp-row'); if(!row) return;
+  const s = row.querySelector('.saved'); if(!s) return;
+  s.classList.add('show'); setTimeout(()=>s.classList.remove('show'), 900);
+}
+
+async function updMetricField(id, field, value, el){
+  try{
+    await api(`/admin/api/metric/${id}/update`, {method:'POST', body: JSON.stringify({[field]: value})});
+    flashSaved(el);
+    const m = DATA.metrics.find(x=>x.id===id);
+    if(m){
+      if(field==='display') m.display_name = value;
+      if(field==='question') m.question_text = value;
+      if(field==='is_text'){ m.is_text = value; renderMetrics(); }
+    }
+  }catch(e){toast('Ошибка: '+e.message,'err')}
+}
+
+async function updMetricPlan(id, field, value, el){
+  try{
+    const body = {};
+    body[field] = value === '' ? null : parseFloat(value);
+    if(body[field] !== null && (isNaN(body[field]) || body[field] < 0)){
+      toast('План должен быть числом ≥ 0','err'); return;
+    }
+    await api(`/admin/api/metric/${id}/update`, {method:'POST', body: JSON.stringify(body)});
+    flashSaved(el);
+    const m = DATA.metrics.find(x=>x.id===id);
+    if(m) m[field] = body[field];
+  }catch(e){toast('Ошибка: '+e.message,'err')}
+}
+
+async function deleteMetric(id){
+  if(!confirm('Скрыть показатель? Старые данные сохранятся, но в опросе он больше не появится.')) return;
+  try{ await api(`/admin/api/metric/${id}/delete`, {method:'POST'}); loadAll(); toast('Скрыто','ok'); }
+  catch(e){toast('Ошибка: '+e.message,'err')}
+}
+async function restoreMetric(id){
+  try{ await api(`/admin/api/metric/${id}/restore`, {method:'POST'}); loadAll(); toast('Восстановлено','ok'); }
+  catch(e){toast('Ошибка: '+e.message,'err')}
+}
+async function moveMetric(id, dir){
+  try{ await api(`/admin/api/metric/${id}/move`, {method:'POST', body: JSON.stringify({direction:dir})}); loadAll(); }
+  catch(e){toast('Ошибка: '+e.message,'err')}
+}
+
+async function addMetric(specialist, wrap){
+  const display = wrap.querySelector('.new-display').value.trim();
+  const question = wrap.querySelector('.new-question').value.trim();
+  const is_text = wrap.querySelector('.new-text').checked;
+  if(!display || !question){toast('Заполните название и текст вопроса','err');return}
+  try{
+    const created = await api('/admin/api/metric', {method:'POST', body: JSON.stringify({specialist, display, question, is_text})});
+    const pw = wrap.querySelector('.new-pw').value;
+    const pm = wrap.querySelector('.new-pm').value;
+    if(pw !== '' || pm !== ''){
+      const u = {};
+      if(pw !== '') u.plan_week = parseFloat(pw);
+      if(pm !== '') u.plan_month = parseFloat(pm);
+      await api(`/admin/api/metric/${created.id}/update`, {method:'POST', body: JSON.stringify(u)});
+    }
+    loadAll(); toast('Добавлено','ok');
+  }catch(e){toast('Ошибка: '+e.message,'err')}
+}
+
+async function updSp(id, field, value){
+  try{
+    await api(`/admin/api/specialist/${id}/update`, {method:'POST', body: JSON.stringify({[field]: value})});
+    toast('Сотрудник обновлён','ok');
+    loadAll();
+  }catch(e){toast('Ошибка: '+e.message,'err')}
+}
+async function deleteSp(id){
+  if(!confirm('Скрыть сотрудника? Опросы перестанут ему отправляться. Данные не теряются.')) return;
+  try{ await api(`/admin/api/specialist/${id}/delete`, {method:'POST'}); loadAll(); toast('Скрыт','ok'); }
+  catch(e){toast('Ошибка: '+e.message,'err')}
+}
+async function restoreSp(id){
+  try{ await api(`/admin/api/specialist/${id}/restore`, {method:'POST'}); loadAll(); toast('Восстановлен','ok'); }
+  catch(e){toast('Ошибка: '+e.message,'err')}
+}
+async function moveSp(id, dir){
+  try{ await api(`/admin/api/specialist/${id}/move`, {method:'POST', body: JSON.stringify({direction:dir})}); loadAll(); }
+  catch(e){toast('Ошибка: '+e.message,'err')}
+}
+
+async function addSp(){
+  const wrap = document.querySelector('.sp-add');
+  const name = wrap.querySelector('.new-sp-name').value.trim();
+  const tg = wrap.querySelector('.new-sp-id').value.trim();
+  if(!name || !tg){toast('Заполните имя и Telegram ID','err'); return}
+  try{
+    await api('/admin/api/specialist', {method:'POST', body: JSON.stringify({name, telegram_id: tg})});
+    wrap.querySelector('.new-sp-name').value='';
+    wrap.querySelector('.new-sp-id').value='';
+    loadAll(); toast('Сотрудник добавлен','ok');
+  }catch(e){toast('Ошибка: '+e.message,'err')}
+}
+
+async function saveReminderTime(){
+  const t = document.getElementById('reminderTime').value;
+  try{
+    const r = await api('/admin/api/settings', {method:'POST', body: JSON.stringify({reminder_time: t})});
+    toast('Время сохранено: '+t+(r.warning?(' ('+r.warning+')'):''), 'ok');
+  }catch(e){toast('Ошибка: '+e.message,'err')}
+}
+
+async function sendReminder(target){
+  const label = target==='all' ? 'всем' : target;
+  if(!confirm('Отправить тестовое напоминание '+label+'?')) return;
+  try{
+    const r = await api('/admin/api/send-reminder', {method:'POST', body: JSON.stringify({specialist: target})});
+    const ok = r.sent.length, fail = r.failed.length;
+    if(fail===0) toast('✓ Отправлено: '+r.sent.join(', '), 'ok');
+    else toast('Отправлено '+ok+', ошибок '+fail+': '+r.failed.map(f=>f.name).join(', '), 'err');
+  }catch(e){toast('Ошибка: '+e.message,'err')}
+}
+
+// === Event delegation (single registration; survives re-renders) ===
+document.addEventListener('click', e=>{
+  const t = e.target;
+  const a = t.dataset && t.dataset.action;
+  if(!a) {
+    if(t.id === 'loginBtn') saveToken();
+    else if(t.id === 'saveTimeBtn') saveReminderTime();
+    return;
+  }
+  const id = t.dataset.id ? parseInt(t.dataset.id, 10) : null;
+  const dir = t.dataset.dir;
+  const name = t.dataset.name;
+  switch(a){
+    case 'm-move': moveMetric(id, dir); break;
+    case 'm-del': deleteMetric(id); break;
+    case 'm-restore': restoreMetric(id); break;
+    case 'm-add': {
+      const wrap = t.closest('.adm-add');
+      addMetric(wrap.dataset.spec, wrap);
+      break;
+    }
+    case 'sp-move': moveSp(id, dir); break;
+    case 'sp-del': deleteSp(id); break;
+    case 'sp-restore': restoreSp(id); break;
+    case 'sp-test': sendReminder(name); break;
+    case 'sp-add': addSp(); break;
+    case 'send-all': sendReminder('all'); break;
+  }
+});
+
+document.addEventListener('focusout', e=>{
+  const t = e.target;
+  if(!t.classList) return;
+  const id = t.dataset.id ? parseInt(t.dataset.id, 10) : null;
+  if(t.classList.contains('f-display')) updMetricField(id, 'display', t.value, t);
+  else if(t.classList.contains('f-question')) updMetricField(id, 'question', t.value, t);
+  else if(t.classList.contains('f-pw')) updMetricPlan(id, 'plan_week', t.value, t);
+  else if(t.classList.contains('f-pm')) updMetricPlan(id, 'plan_month', t.value, t);
+  else if(t.classList.contains('f-sp-name')) updSp(id, 'name', t.value);
+  else if(t.classList.contains('f-sp-tg')) updSp(id, 'telegram_id', t.value);
+});
+
+document.addEventListener('change', e=>{
+  const t = e.target;
+  if(!t.classList) return;
+  if(t.classList.contains('f-is-text')){
+    const id = parseInt(t.dataset.id, 10);
+    updMetricField(id, 'is_text', t.checked, t);
+  }
+  else if(t.id === 'showHidden') renderMetrics();
+  else if(t.id === 'showHiddenSp') renderSpecialists();
+});
+
+document.getElementById('tokenInput').addEventListener('keydown', e => {
+  if(e.key === 'Enter') saveToken();
+});
+
+if(TOKEN) loadAll(); else showLogin('');
+</script>
+</body>
+</html>
