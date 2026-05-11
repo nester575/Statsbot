@@ -56,6 +56,16 @@ summary:hover{color:#e2e6f0}
 .day-cell .v{font-size:13px;color:#e2e6f0;font-weight:600;line-height:1.3;margin-top:3px}
 .day-cell.empty{background:transparent;border-style:dashed;border-color:#1a1d26}
 .day-cell.empty .v{color:#2d3346;font-weight:400}
+.day-cell.today{border-color:#e8ff47;background:rgba(232,255,71,.06)}
+.day-cell.today .d{color:#e8ff47;font-weight:700}
+.day-cell.today .v{color:#e8ff47}
+.day-cell.today.empty{background:transparent;border-style:dashed;border-color:rgba(232,255,71,.5)}
+.day-cell.today.empty .v{color:rgba(232,255,71,.4)}
+/* Header row inside «ПО ДНЯМ» column — mirrors the data row's day-cell layout
+   so the "СЕГОДНЯ" label sits exactly above today's day-cell. */
+.metric-header .col-days{display:flex;gap:4px;align-items:baseline;overflow:hidden;min-width:0}
+.metric-header .col-days .dh-cell{flex:0 0 auto;min-width:42px;text-align:center;padding:0 6px;line-height:1}
+.metric-header .col-days .dh-cell.today{color:#e8ff47;font-weight:700}
 .metric-row .col-avg{color:#5a6070;font-size:11px;white-space:nowrap;text-align:right}
 .metric-row .col-plan,.metric-row .col-trend{display:flex;justify-content:center}
 .metric-row .col-total{color:#e8ff47;font-size:22px;font-weight:bold;text-align:right}
@@ -94,16 +104,12 @@ summary:hover{color:#e2e6f0}
 <body>
 <h1>Live Dashboard ОсОО «Каравелла»</h1>
 <div class="live">● Обновляется каждые 2 минуты &nbsp;·&nbsp; <a href="/admin" style="color:#5a6070;text-decoration:none">⚙ admin</a></div>
+<div id="status"></div>
 <div class="tabs">
-  <button class="tab active" data-tab="today">Сегодня</button>
-  <button class="tab" data-tab="week">Неделя</button>
+  <button class="tab active" data-tab="week">Неделя</button>
   <button class="tab" data-tab="month">Месяц</button>
 </div>
-<div id="today" class="view">
-  <div id="status"></div>
-  <div id="today-data">Загрузка...</div>
-</div>
-<div id="week" class="view hidden">
+<div id="week" class="view">
   <div class="period" id="week-period"></div>
   <div id="week-data">Загрузка...</div>
 </div>
@@ -130,28 +136,22 @@ function planChip(value, plan){
   return `<span class="plan ${cls}" title="План на период: ${fmtNum(plan)}">${fmtNum(value)}/${fmtNum(plan)} · ${pct.toFixed(0)}%</span>`;
 }
 
-async function loadToday(){
+// Status chips shown above the tabs — independent of which period is selected.
+async function loadStatus(){
   const data=await fetch('/api/today').then(r=>r.json());
   const rows=data.rows||[];
-  const display=data.display_names||{};
-  const textKeys=new Set(data.text_keys||[]);
   const SP=(data.specialists_order&&data.specialists_order.length)?data.specialists_order:FALLBACK_SP;
   const sub=new Set(rows.map(r=>r.specialist));
-  document.getElementById('status').innerHTML='<div class="card"><div class="name">Статус сдачи сегодня</div>'+SP.map(n=>`<span class="chip ${sub.has(n)?'done':'pending'}">${sub.has(n)?'✓':''} ${esc(n)}</span>`).join('')+'</div>';
-  const bp={};
-  rows.forEach(r=>{(bp[r.specialist]=bp[r.specialist]||[]).push(r)});
-  let h='';
-  for(const n of SP){
-    if(!bp[n]) continue;
-    h+=`<div class="card"><div class="name">${esc(n)}</div>`;
-    bp[n].forEach(r=>{
-      const isN=!textKeys.has(r.metric)&&!isNaN(parseFloat(r.value))&&isFinite(r.value);
-      const valHtml=isN?`<span class="num">${fmtNum(r.value)}</span>`:esc(r.value);
-      h+=`<div class="today-row"><span class="label">${esc(dn(display,r.metric))}</span><span class="value">${valHtml}</span></div>`;
-    });
-    h+='</div>';
-  }
-  document.getElementById('today-data').innerHTML=h||'<div class="card empty">Отчётов за сегодня пока нет</div>';
+  document.getElementById('status').innerHTML=
+    '<div class="card"><div class="name">Статус сдачи сегодня</div>'+
+    SP.map(n=>`<span class="chip ${sub.has(n)?'done':'pending'}">${sub.has(n)?'✓':''} ${esc(n)}</span>`).join('')+
+    '</div>';
+}
+
+// Local date in user's TZ as "YYYY-MM-DD" — used to mark today's day-cell.
+function todayLocalISO(){
+  const d=new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
 function getWorkingDays(startStr,endStr){
@@ -213,10 +213,15 @@ async function loadAggregate(period){
       const prevSp=(d.prev_specialists&&d.prev_specialists[n])||{};
       const planSp=plans[n]||{};
       const allDays=getWorkingDays(d.start,d.end);
-      // Column header — appears once per specialist card
+      const todayIso=todayLocalISO();
+      // Build per-day header cells; only today's cell carries the «СЕГОДНЯ» text.
+      const daysHeaderCells=allDays.map(dd=>{
+        const isToday=dd===todayIso;
+        return `<span class="dh-cell${isToday?' today':''}">${isToday?'сегодня':''}</span>`;
+      }).join('');
       h+=`<div class="metric-grid metric-header">
         <span class="col">показатель</span>
-        <span class="col">по дням</span>
+        <div class="col col-days">${daysHeaderCells}</div>
         <span class="col right">ср/день</span>
         <span class="col center">план</span>
         <span class="col center">тренд</span>
@@ -245,7 +250,10 @@ async function loadAggregate(period){
         const daysHtml=allDays.map(dd=>{
           const has=byDate[dd]!==undefined;
           const val=has?fmtNum(byDate[dd]):'—';
-          return `<div class="day-cell${has?'':' empty'}"><div class="d">${fmtDate(dd)}</div><div class="v">${val}</div></div>`;
+          const classes=['day-cell'];
+          if(!has) classes.push('empty');
+          if(dd===todayIso) classes.push('today');
+          return `<div class="${classes.join(' ')}"><div class="d">${fmtDate(dd)}</div><div class="v">${val}</div></div>`;
         }).join('');
         const lbl=dn(display,m);
         h+=`<div class="metric-grid metric-row">
@@ -293,13 +301,18 @@ function bindTooltips(period){
 function showTab(tab){
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('hidden',v.id!==tab));
-  if(tab==='today')loadToday();
-  else loadAggregate(tab);
+  loadAggregate(tab);
 }
 
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
-loadToday();
-setInterval(()=>{const a=document.querySelector('.tab.active').dataset.tab;if(a==='today')loadToday();else loadAggregate(a)},120000);
+// Initial load: status chips + the default-active tab (week)
+loadStatus();
+loadAggregate('week');
+setInterval(()=>{
+  loadStatus();
+  const a=document.querySelector('.tab.active').dataset.tab;
+  loadAggregate(a);
+}, 120000);
 </script>
 </body>
 </html>

@@ -116,6 +116,14 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--days", type=int, default=14, help="кол-во рабочих дней (по умолчанию 14)")
     p.add_argument("--clear", action="store_true", help="очистить таблицу reports перед вставкой")
+    p.add_argument("--wipe-only", action="store_true",
+                   help="ТОЛЬКО очистить ВСЕ отчёты и выйти (без вставки демо-данных)")
+    p.add_argument("--wipe-today", action="store_true",
+                   help="ТОЛЬКО удалить отчёты за сегодня (Bishkek time)")
+    p.add_argument("--wipe-date", type=str, default=None, metavar="YYYY-MM-DD",
+                   help="ТОЛЬКО удалить отчёты за указанную дату")
+    p.add_argument("--keep-after", type=str, default=None, metavar="\"YYYY-MM-DD HH:MM\"",
+                   help="Удалить ВСЁ кроме отчётов после указанной даты-времени (Bishkek)")
     p.add_argument("--skip-rate", type=float, default=0.2, help="вероятность пропуска у специалиста (0.2 = 20%)")
     args = p.parse_args()
 
@@ -129,6 +137,73 @@ def main():
             specialist TEXT NOT NULL, metric TEXT NOT NULL, value TEXT NOT NULL
         )
     """)
+
+    if args.keep_after:
+        try:
+            cutoff = datetime.strptime(args.keep_after.strip(), "%Y-%m-%d %H:%M")
+        except ValueError:
+            print(f"❌ Неверный формат: {args.keep_after!r}. Используйте \"YYYY-MM-DD HH:MM\"")
+            cur.close(); conn.close()
+            return
+        cutoff_date = cutoff.date()
+        cutoff_time = cutoff.time()
+        # Count what will be deleted (everything strictly before cutoff datetime)
+        cur.execute(
+            "SELECT COUNT(*) FROM reports "
+            "WHERE date < %s OR (date = %s AND time < %s)",
+            (cutoff_date, cutoff_date, cutoff_time),
+        )
+        to_delete = cur.fetchone()[0]
+        cur.execute(
+            "SELECT COUNT(*) FROM reports "
+            "WHERE date > %s OR (date = %s AND time >= %s)",
+            (cutoff_date, cutoff_date, cutoff_time),
+        )
+        to_keep = cur.fetchone()[0]
+        cur.execute(
+            "DELETE FROM reports "
+            "WHERE date < %s OR (date = %s AND time < %s)",
+            (cutoff_date, cutoff_date, cutoff_time),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"🧹 Удалено {to_delete} отчётов до {args.keep_after} (Bishkek)")
+        print(f"✅ Сохранено {to_keep} отчётов начиная с {args.keep_after}")
+        print("ℹ️  Сотрудники, метрики и настройки не тронуты.")
+        return
+
+    if args.wipe_today or args.wipe_date:
+        if args.wipe_today:
+            target = datetime.now(BISHKEK).date()
+        else:
+            try:
+                target = datetime.strptime(args.wipe_date, "%Y-%m-%d").date()
+            except ValueError:
+                print(f"❌ Неверный формат даты: {args.wipe_date}. Используйте YYYY-MM-DD")
+                cur.close(); conn.close()
+                return
+        cur.execute("SELECT COUNT(*) FROM reports WHERE date = %s", (target,))
+        before = cur.fetchone()[0]
+        cur.execute("DELETE FROM reports WHERE date = %s", (target,))
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"🧹 Удалено {before} отчётов за {target.isoformat()}")
+        print("ℹ️  Прошлые дни, сотрудники и настройки не тронуты.")
+        return
+
+    if args.wipe_only:
+        cur.execute("SELECT COUNT(*) FROM reports")
+        before = cur.fetchone()[0]
+        cur.execute("TRUNCATE reports RESTART IDENTITY")
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"🧹 Очищено {before} отчётов. Таблица reports пуста.")
+        print("ℹ️  Настройки метрик, сотрудники и время опроса сохранены — обнулена только история.")
+        return
+
     if args.clear:
         cur.execute("TRUNCATE reports RESTART IDENTITY")
         print("→ Старые отчёты удалены")
