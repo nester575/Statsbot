@@ -39,7 +39,13 @@ summary:hover{color:#e2e6f0}
 .today-row .label{color:#5a6070;font-size:13px;flex:1;min-width:0}
 .today-row .value{flex:0 0 140px;text-align:right;color:#e2e6f0;font-size:14px;word-break:break-word}
 .today-row .value .num{color:#e8ff47;font-size:20px;font-weight:bold}
-.metric-row{display:grid;grid-template-columns:120px minmax(0,1fr) auto 130px;gap:14px;align-items:center;padding:14px 0;border-top:1px solid #1a1d26}
+/* shared grid template — used for both header and data rows */
+.metric-grid{display:grid;grid-template-columns:120px minmax(0,1fr) 90px 110px 70px 60px 130px;gap:12px;align-items:center}
+.metric-header{font-size:10px;color:#5a6070;text-transform:uppercase;letter-spacing:.6px;padding:0 0 8px;border-bottom:1px solid #1a1d26;margin-bottom:6px}
+.metric-header .col{white-space:nowrap}
+.metric-header .col.right{text-align:right}
+.metric-header .col.center{text-align:center}
+.metric-row{padding:14px 0;border-top:1px solid #1a1d26}
 .metric-row:first-of-type{border-top:none}
 .metric-row .label{color:#9097a8;font-size:13px}
 .metric-row .days{display:flex;gap:4px;overflow-x:auto;padding-bottom:6px;scrollbar-width:thin;scrollbar-color:#2d3346 transparent}
@@ -50,9 +56,10 @@ summary:hover{color:#e2e6f0}
 .day-cell .v{font-size:13px;color:#e2e6f0;font-weight:600;line-height:1.3;margin-top:3px}
 .day-cell.empty{background:transparent;border-style:dashed;border-color:#1a1d26}
 .day-cell.empty .v{color:#2d3346;font-weight:400}
-.metric-row .stats{display:flex;align-items:center;gap:10px;justify-content:flex-end}
-.metric-row .stats .avg{color:#5a6070;font-size:11px;white-space:nowrap}
-.metric-row .stats .total{color:#e8ff47;font-size:22px;font-weight:bold;min-width:48px;text-align:right}
+.metric-row .col-avg{color:#5a6070;font-size:11px;white-space:nowrap;text-align:right}
+.metric-row .col-plan,.metric-row .col-trend{display:flex;justify-content:center}
+.metric-row .col-total{color:#e8ff47;font-size:22px;font-weight:bold;text-align:right}
+.metric-row .col-empty{color:#2d3346;text-align:center;font-size:11px}
 .trend{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:2px 7px;border-radius:10px;font-weight:600;white-space:nowrap}
 .trend.up{color:#4ade80;background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.25)}
 .trend.down{color:#ef6464;background:rgba(239,100,100,.1);border:1px solid rgba(239,100,100,.25)}
@@ -71,7 +78,13 @@ summary:hover{color:#e2e6f0}
 .chart-mini .line{fill:none;stroke:#e8ff47;stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}
 .chart-mini .area{opacity:.85}
 .chart-empty{color:#2d3346;font-size:10px;text-align:center;padding-top:16px}
-@media (max-width:720px){.metric-row{grid-template-columns:1fr;gap:8px}.metric-row .stats{justify-content:flex-start}.chart-mini{width:100%;height:60px}}
+@media (max-width:900px){
+  .metric-grid{grid-template-columns:1fr;gap:6px}
+  .metric-header{display:none}
+  .metric-row{padding:10px 0}
+  .metric-row .col-avg,.metric-row .col-plan,.metric-row .col-trend,.metric-row .col-total{text-align:left;justify-content:flex-start}
+  .chart-mini{width:100%;height:60px}
+}
 #tt{position:fixed;background:#1a1d26;color:#e2e6f0;border:1px solid #2d3346;padding:6px 10px;border-radius:4px;font-size:12px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:100;white-space:nowrap}
 #tt.show{opacity:1}
 #tt .tt-date{color:#5a6070;font-size:10px;margin-bottom:2px}
@@ -200,6 +213,16 @@ async function loadAggregate(period){
       const prevSp=(d.prev_specialists&&d.prev_specialists[n])||{};
       const planSp=plans[n]||{};
       const allDays=getWorkingDays(d.start,d.end);
+      // Column header — appears once per specialist card
+      h+=`<div class="metric-grid metric-header">
+        <span class="col">показатель</span>
+        <span class="col">по дням</span>
+        <span class="col right">ср/день</span>
+        <span class="col center">план</span>
+        <span class="col center">тренд</span>
+        <span class="col right">итого</span>
+        <span class="col center">график</span>
+      </div>`;
       metricsArr.forEach(([m,v])=>{
         const series=(b.series&&b.series[m])||[];
         const byDate={};series.forEach(p=>{byDate[p.date]=p.value});
@@ -209,6 +232,7 @@ async function loadAggregate(period){
         let trend='';
         if(prev===null||prev===0){
           if(v>0)trend=`<span class="trend new">NEW</span>`;
+          else trend='<span class="col-empty">—</span>';
         }else{
           const pct=((v-prev)/prev)*100;
           const abs=Math.abs(pct);
@@ -216,18 +240,21 @@ async function loadAggregate(period){
           else if(pct>0)trend=`<span class="trend up">↑ ${abs.toFixed(0)}%</span>`;
           else trend=`<span class="trend down">↓ ${abs.toFixed(0)}%</span>`;
         }
-        const avgHtml=avg!==null?`<span class="avg">~${fmtNum(avg)}/день</span>`:'';
-        const planHtml=plan?planChip(v,plan):'';
+        const avgHtml=avg!==null?`~${fmtNum(avg)}/день`:'<span class="col-empty">—</span>';
+        const planHtml=plan?planChip(v,plan):'<span class="col-empty">—</span>';
         const daysHtml=allDays.map(dd=>{
           const has=byDate[dd]!==undefined;
           const val=has?fmtNum(byDate[dd]):'—';
           return `<div class="day-cell${has?'':' empty'}"><div class="d">${fmtDate(dd)}</div><div class="v">${val}</div></div>`;
         }).join('');
         const lbl=dn(display,m);
-        h+=`<div class="metric-row">
+        h+=`<div class="metric-grid metric-row">
           <span class="label">${esc(lbl)}</span>
           <div class="days">${daysHtml}</div>
-          <div class="stats">${avgHtml}${planHtml}${trend}<span class="total">${fmtNum(v)}</span></div>
+          <div class="col-avg">${avgHtml}</div>
+          <div class="col-plan">${planHtml}</div>
+          <div class="col-trend">${trend}</div>
+          <div class="col-total">${fmtNum(v)}</div>
           <div class="chart-mini">${renderChart(lbl,series,`${period}-${gid++}`)}</div>
         </div>`;
       });
