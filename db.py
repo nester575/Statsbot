@@ -313,6 +313,30 @@ def get_admin_config():
             return rows
 
 
+def get_active_metrics_for(specialist):
+    """Active metric_config rows for one specialist, ordered for UI rendering.
+
+    Used by the retroactive report form to know which fields to show.
+    SQL-side filter avoids fetching all rows just to drop most of them.
+    """
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT id, specialist, metric_key, display_name, question_text, "
+                "position, is_text, is_active, plan_week, plan_month FROM metrics_config "
+                "WHERE specialist = %s AND is_active = TRUE "
+                "ORDER BY position ASC, id ASC",
+                (specialist,),
+            )
+            rows = []
+            for r in cur.fetchall():
+                d = dict(r)
+                d["plan_week"]  = float(d["plan_week"])  if d["plan_week"]  is not None else None
+                d["plan_month"] = float(d["plan_month"]) if d["plan_month"] is not None else None
+                rows.append(d)
+            return rows
+
+
 # ============================================================
 # Specialists
 # ============================================================

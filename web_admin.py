@@ -416,8 +416,7 @@ def admin_report_get():
     values = db.get_report_for_day(specialist, d)
     # Only ACTIVE metrics for this specialist — so UI shows the fields the
     # employee currently submits via the bot.
-    metrics = [r for r in db.get_admin_config()
-               if r["specialist"] == specialist and r["is_active"]]
+    metrics = db.get_active_metrics_for(specialist)
     return jsonify({
         "specialist": specialist,
         "date": date_str,

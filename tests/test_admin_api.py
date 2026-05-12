@@ -446,15 +446,13 @@ class TestSendReminder:
 class TestRetroactiveReport:
     def test_get_returns_existing_values_and_has_existing_true(self, client, monkeypatch, auth_headers):
         monkeypatch.setattr(db, "get_report_for_day", lambda sp, d: {"заявки": "10", "письма": "33"})
-        monkeypatch.setattr(db, "get_admin_config", lambda: [
-            {"id": 1, "specialist": "Эльдана", "metric_key": "заявки", "display_name": "заявки",
+        # get_active_metrics_for now does SQL-side filter per specialist
+        monkeypatch.setattr(db, "get_active_metrics_for", lambda sp: [
+            {"id": 1, "specialist": sp, "metric_key": "заявки", "display_name": "заявки",
              "question_text": "?", "position": 0, "is_text": False, "is_active": True,
              "plan_week": None, "plan_month": None},
-            {"id": 2, "specialist": "Эльдана", "metric_key": "письма", "display_name": "письма",
+            {"id": 2, "specialist": sp, "metric_key": "письма", "display_name": "письма",
              "question_text": "?", "position": 1, "is_text": False, "is_active": True,
-             "plan_week": None, "plan_month": None},
-            {"id": 3, "specialist": "Олег", "metric_key": "контакты", "display_name": "контакты",
-             "question_text": "?", "position": 0, "is_text": False, "is_active": True,
              "plan_week": None, "plan_month": None},
         ])
         r = client.get("/admin/api/report?specialist=Эльдана&date=2026-05-08", headers=auth_headers)
@@ -462,12 +460,12 @@ class TestRetroactiveReport:
         d = r.get_json()
         assert d["has_existing"] is True
         assert d["values"] == {"заявки": "10", "письма": "33"}
-        # Only Эльдана's metrics returned, not Олег's
+        # The helper is called with the right specialist, returns only their metrics
         assert {m["specialist"] for m in d["metrics"]} == {"Эльдана"}
 
     def test_get_returns_has_existing_false_when_empty(self, client, monkeypatch, auth_headers):
         monkeypatch.setattr(db, "get_report_for_day", lambda sp, d: {})
-        monkeypatch.setattr(db, "get_admin_config", lambda: [])
+        monkeypatch.setattr(db, "get_active_metrics_for", lambda sp: [])
         r = client.get("/admin/api/report?specialist=Эльдана&date=2026-05-08", headers=auth_headers)
         assert r.status_code == 200
         assert r.get_json()["has_existing"] is False
@@ -475,17 +473,28 @@ class TestRetroactiveReport:
     def test_get_inactive_metrics_excluded(self, client, monkeypatch, auth_headers):
         """If admin hid a metric, it shouldn't appear in the retro-entry form."""
         monkeypatch.setattr(db, "get_report_for_day", lambda sp, d: {})
-        monkeypatch.setattr(db, "get_admin_config", lambda: [
+        # The endpoint now uses get_active_metrics_for() (SQL-side filter) —
+        # we stub it to return only the "active" row.
+        monkeypatch.setattr(db, "get_active_metrics_for", lambda sp: [
             {"id": 1, "specialist": "Эльдана", "metric_key": "active",
              "display_name": "a", "question_text": "?", "position": 0,
              "is_text": False, "is_active": True, "plan_week": None, "plan_month": None},
-            {"id": 2, "specialist": "Эльдана", "metric_key": "hidden",
-             "display_name": "h", "question_text": "?", "position": 1,
-             "is_text": False, "is_active": False, "plan_week": None, "plan_month": None},
         ])
         r = client.get("/admin/api/report?specialist=Эльдана&date=2026-05-08", headers=auth_headers)
         keys = {m["metric_key"] for m in r.get_json()["metrics"]}
         assert keys == {"active"}
+
+    def test_get_uses_active_metrics_helper(self, client, monkeypatch, auth_headers):
+        """Verify the dedicated SQL-filtered helper is called, not the
+        full get_admin_config() + Python-side filter."""
+        called_with = []
+        def fake_helper(sp):
+            called_with.append(sp)
+            return []
+        monkeypatch.setattr(db, "get_report_for_day", lambda sp, d: {})
+        monkeypatch.setattr(db, "get_active_metrics_for", fake_helper)
+        client.get("/admin/api/report?specialist=Эльдана&date=2026-05-08", headers=auth_headers)
+        assert called_with == ["Эльдана"]
 
     def test_get_rejects_invalid_date(self, client, auth_headers):
         r = client.get("/admin/api/report?specialist=X&date=badformat", headers=auth_headers)

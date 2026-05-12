@@ -44,6 +44,7 @@ from db import (  # noqa: F401,E402
     init_pool, init_db, get_conn,
     save_report, get_today_reports, get_period_reports,
     get_questions, get_config_lookups, get_plans, get_admin_config,
+    get_active_metrics_for,
     get_specialists_dict, get_specialists_order,
     get_specialists_admin, get_admin_specialist_groups,
     get_setting, set_setting,

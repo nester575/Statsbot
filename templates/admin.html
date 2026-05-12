@@ -21,8 +21,11 @@ h1{color:#e8ff47;font-size:24px;margin:0 0 8px}
 /* Retroactive report entry */
 .report-bar{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}
 .report-bar label{display:flex;flex-direction:column;gap:4px;color:#9097a8;font-size:11px}
-.report-bar select,.report-bar input[type=date]{background:#0d1017;border:1px solid #2d3346;color:#e2e6f0;padding:7px 9px;border-radius:3px;font-family:inherit;font-size:13px;min-width:180px}
+.report-bar select,.report-bar input[type=date]{background:#0d1017;border:1px solid #2d3346;color:#e2e6f0;padding:7px 9px;border-radius:3px;font-family:inherit;font-size:13px;min-width:180px;cursor:pointer}
 .report-bar select:focus,.report-bar input[type=date]:focus{outline:none;border-color:#47c8ff}
+.report-bar input[type=date]{color-scheme:dark}
+.report-bar input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.8) brightness(1.5);cursor:pointer;opacity:.7;padding:2px;border-radius:2px;transition:opacity .15s,background .15s}
+.report-bar input[type=date]::-webkit-calendar-picker-indicator:hover{opacity:1;background:rgba(71,200,255,.15)}
 .report-bar button{background:#47c8ff;color:#0a0c10;border:none;padding:8px 14px;border-radius:3px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
 .report-bar button:hover{filter:brightness(1.1)}
 #reportFormArea{border-top:1px dashed #232838;padding-top:14px;margin-top:6px}
@@ -265,11 +268,24 @@ function populateReportSpecSelect(){
   });
   sel.innerHTML = opts.join('');
   if(cur) sel.value = cur;
+  initReportDateInput();
+}
+
+// One-time setup of the date input — bounds, default value, auto-open calendar.
+function initReportDateInput(){
   const dateInp = document.getElementById('reportDate');
-  if(dateInp && !dateInp.max){
-    const t = new Date();
-    dateInp.max = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
-  }
+  if(!dateInp || dateInp.dataset.bound === '1') return;
+  dateInp.dataset.bound = '1';
+  const t = new Date();
+  const todayIso = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+  dateInp.max = todayIso;
+  dateInp.min = '2024-01-01';  // sanity guard — no reports older than this
+  if(!dateInp.value) dateInp.value = todayIso;  // pre-fill with today
+  // Auto-open native calendar picker on click/focus (Chrome 99+, Edge, Safari 16+).
+  // showPicker() is no-op in older browsers — calendar icon still works manually.
+  const openPicker = () => { try{ dateInp.showPicker && dateInp.showPicker(); }catch(_){} };
+  dateInp.addEventListener('click', openPicker);
+  dateInp.addEventListener('focus', openPicker);
 }
 
 function fmtDateRu(iso){return iso.split('-').reverse().join('.')}
