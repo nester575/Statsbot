@@ -203,6 +203,49 @@ def get_period_reports(start_date, end_date):
             return cur.fetchall()
 
 
+def get_report_for_day(specialist, date):
+    """Returns {metric_key: value} for a given specialist+date.
+    Empty dict if no entries.
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT metric, value FROM reports "
+                "WHERE specialist = %s AND date = %s",
+                (specialist, date),
+            )
+            return {m: v for m, v in cur.fetchall()}
+
+
+def upsert_report(specialist, date, values, time_str="18:00:00"):
+    """Replace all rows for (specialist, date) with new values.
+    Used for retroactive entry / corrections from admin UI.
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM reports WHERE specialist = %s AND date = %s",
+                (specialist, date),
+            )
+            for metric, value in values.items():
+                cur.execute(
+                    "INSERT INTO reports (date, time, specialist, metric, value) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (date, time_str, specialist, metric, str(value)),
+                )
+
+
+def delete_report_for_day(specialist, date):
+    """Delete all rows for (specialist, date). Returns count deleted."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM reports WHERE specialist = %s AND date = %s",
+                (specialist, date),
+            )
+            return cur.rowcount
+
+
 # ============================================================
 # Metrics config
 # ============================================================

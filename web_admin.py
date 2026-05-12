@@ -5,6 +5,7 @@ All endpoints (except the HTML page itself) are token-protected via
 """
 import hmac
 import logging
+from datetime import datetime
 
 import psycopg2
 from flask import abort, jsonify, render_template, request
@@ -391,3 +392,71 @@ def admin_send_reminder():
             failed.append({"name": name, "error": str(e)})
             logger.error(f"Manual reminder failed for {name}: {e}")
     return jsonify({"ok": True, "sent": sent, "failed": failed})
+
+
+# ============================================================
+# Retroactive report entry (boss fills in for forgotten / lost days)
+# ============================================================
+
+def _parse_report_date(date_str):
+    try:
+        return datetime.strptime(date_str, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        abort(400, "date must be YYYY-MM-DD")
+
+
+@app.route("/admin/api/report")
+def admin_report_get():
+    _check_admin_token()
+    specialist = (request.args.get("specialist") or "").strip()
+    date_str = (request.args.get("date") or "").strip()
+    if not specialist or not date_str:
+        abort(400, "specialist and date are required")
+    d = _parse_report_date(date_str)
+    values = db.get_report_for_day(specialist, d)
+    # Only ACTIVE metrics for this specialist — so UI shows the fields the
+    # employee currently submits via the bot.
+    metrics = [r for r in db.get_admin_config()
+               if r["specialist"] == specialist and r["is_active"]]
+    return jsonify({
+        "specialist": specialist,
+        "date": date_str,
+        "values": values,
+        "metrics": metrics,
+        "has_existing": bool(values),
+    })
+
+
+@app.route("/admin/api/report", methods=["POST"])
+def admin_report_upsert():
+    _check_admin_token()
+    data = request.get_json(silent=True) or {}
+    specialist = (data.get("specialist") or "").strip()
+    date_str = (data.get("date") or "").strip()
+    values = data.get("values") or {}
+    if not specialist or not date_str:
+        abort(400, "specialist and date are required")
+    if not isinstance(values, dict) or not values:
+        abort(400, "values must be a non-empty object")
+    d = _parse_report_date(date_str)
+    # Strip empty values; an empty input means "skip this metric"
+    clean = {k: str(v).strip() for k, v in values.items()
+             if v is not None and str(v).strip() != ""}
+    if not clean:
+        abort(400, "all values are empty")
+    db.upsert_report(specialist, d, clean)
+    logger.info(f"Retroactive report saved: {specialist} / {date_str} / {len(clean)} fields")
+    return jsonify({"ok": True, "saved": len(clean)})
+
+
+@app.route("/admin/api/report", methods=["DELETE"])
+def admin_report_delete():
+    _check_admin_token()
+    specialist = (request.args.get("specialist") or "").strip()
+    date_str = (request.args.get("date") or "").strip()
+    if not specialist or not date_str:
+        abort(400, "specialist and date are required")
+    d = _parse_report_date(date_str)
+    n = db.delete_report_for_day(specialist, d)
+    logger.info(f"Retroactive report deleted: {specialist} / {date_str} / {n} rows")
+    return jsonify({"ok": True, "deleted": n})

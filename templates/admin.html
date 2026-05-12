@@ -18,6 +18,27 @@ h1{color:#e8ff47;font-size:24px;margin:0 0 8px}
 .toggle-hidden input{accent-color:#e8ff47}
 .adm-card{background:#11141b;border:1px solid #232838;border-radius:6px;padding:18px 18px 12px;margin-bottom:18px}
 .adm-card h2{color:#47c8ff;font-size:16px;margin:0 0 14px}
+/* Retroactive report entry */
+.report-bar{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}
+.report-bar label{display:flex;flex-direction:column;gap:4px;color:#9097a8;font-size:11px}
+.report-bar select,.report-bar input[type=date]{background:#0d1017;border:1px solid #2d3346;color:#e2e6f0;padding:7px 9px;border-radius:3px;font-family:inherit;font-size:13px;min-width:180px}
+.report-bar select:focus,.report-bar input[type=date]:focus{outline:none;border-color:#47c8ff}
+.report-bar button{background:#47c8ff;color:#0a0c10;border:none;padding:8px 14px;border-radius:3px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
+.report-bar button:hover{filter:brightness(1.1)}
+#reportFormArea{border-top:1px dashed #232838;padding-top:14px;margin-top:6px}
+.report-info{padding:8px 12px;border-radius:4px;font-size:12px;margin-bottom:12px}
+.report-info.new{background:rgba(71,200,255,.08);border:1px solid rgba(71,200,255,.3);color:#47c8ff}
+.report-info.warn{background:rgba(232,255,71,.06);border:1px solid rgba(232,255,71,.4);color:#e8ff47}
+.report-field{display:grid;grid-template-columns:180px 1fr;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #1a1d26}
+.report-field:last-of-type{border-bottom:none}
+.report-field label{color:#9097a8;font-size:13px}
+.report-field input{background:#0d1017;border:1px solid #1a1d26;color:#e2e6f0;padding:7px 9px;border-radius:3px;font-family:inherit;font-size:13px;width:100%;box-sizing:border-box}
+.report-field input:focus{outline:none;border-color:#47c8ff}
+.report-actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.report-actions .save{background:#e8ff47;color:#0a0c10;border:none;padding:8px 16px;border-radius:3px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
+.report-actions .delete{background:none;color:#ef6464;border:1px solid rgba(239,100,100,.3);padding:8px 16px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:13px}
+.report-actions .delete:hover{filter:brightness(1.2)}
+.report-actions .cancel{background:none;color:#5a6070;border:1px solid #232838;padding:8px 16px;border-radius:3px;cursor:pointer;font-family:inherit;font-size:13px}
 .orphan-btn{background:#47c8ff;color:#0a0c10;border:none;padding:4px 10px;border-radius:3px;font-weight:600;font-family:inherit;font-size:11px;cursor:pointer;margin-left:8px;vertical-align:middle}
 .orphan-btn:hover{filter:brightness(1.1)}
 .orphan-form{display:none;margin:0 0 14px;padding:10px 12px;background:#0d1017;border:1px solid rgba(71,200,255,.4);border-radius:5px;gap:8px;align-items:center}
@@ -108,6 +129,19 @@ h1{color:#e8ff47;font-size:24px;margin:0 0 8px}
       <input type="checkbox" id="showHiddenSp"> показывать скрытых
     </label>
     <div id="spList"></div>
+  </div>
+  <div class="adm-card">
+    <h2>📝 Отчёт задним числом</h2>
+    <div class="report-bar">
+      <label>Сотрудник
+        <select id="reportSpec"><option value="">— выбрать —</option></select>
+      </label>
+      <label>Дата
+        <input type="date" id="reportDate">
+      </label>
+      <button id="reportLoadBtn">Загрузить</button>
+    </div>
+    <div id="reportFormArea" class="hidden"></div>
   </div>
   <div class="adm-card-wrap">
     <label class="toggle-hidden">
@@ -214,6 +248,121 @@ function renderSpecialists(){
     <button data-action="sp-add">+ добавить</button>
   </div>`;
   document.getElementById('spList').innerHTML = h;
+  // Re-populate the «Отчёт задним числом» specialist <select>
+  populateReportSpecSelect();
+}
+
+// ----- Retroactive report entry -----
+
+function populateReportSpecSelect(){
+  const sel = document.getElementById('reportSpec');
+  if(!sel || !SPECIALISTS) return;
+  const cur = sel.value;  // preserve selection across re-renders
+  const opts = ['<option value="">— выбрать —</option>'];
+  SPECIALISTS.specialists.forEach(s=>{
+    const suffix = s.is_active ? '' : ' (скрыт)';
+    opts.push(`<option value="${esc(s.name)}">${esc(s.name)}${suffix}</option>`);
+  });
+  sel.innerHTML = opts.join('');
+  if(cur) sel.value = cur;
+  const dateInp = document.getElementById('reportDate');
+  if(dateInp && !dateInp.max){
+    const t = new Date();
+    dateInp.max = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+  }
+}
+
+function fmtDateRu(iso){return iso.split('-').reverse().join('.')}
+
+async function reportLoad(){
+  const spec = document.getElementById('reportSpec').value;
+  const date = document.getElementById('reportDate').value;
+  if(!spec){toast('Выберите сотрудника','err'); return}
+  if(!date){toast('Выберите дату','err'); return}
+  try{
+    const data = await api(`/admin/api/report?specialist=${encodeURIComponent(spec)}&date=${date}`);
+    renderReportForm(data);
+  }catch(e){
+    toast('Ошибка загрузки: '+e.message,'err');
+  }
+}
+
+function renderReportForm(data){
+  const area = document.getElementById('reportFormArea');
+  if(!data.metrics || data.metrics.length === 0){
+    area.innerHTML = '<div class="empty-msg">У сотрудника нет активных показателей. Настройте их в блоке метрик ниже.</div>';
+    area.classList.remove('hidden');
+    return;
+  }
+  const dateFmt = fmtDateRu(data.date);
+  const info = data.has_existing
+    ? `<div class="report-info warn">⚠ Отчёт за ${dateFmt} уже существует — при сохранении он будет перезаписан.</div>`
+    : `<div class="report-info new">Новый отчёт за ${dateFmt}. Сохранится с временем 18:00.</div>`;
+  let html = info;
+  data.metrics.forEach(m=>{
+    const val = data.values[m.metric_key] ?? '';
+    const type = m.is_text ? 'text' : 'number';
+    const ph = m.is_text ? 'текст или —' : '0';
+    const stepAttr = m.is_text ? '' : ' step="any" min="0"';
+    html += `
+      <div class="report-field">
+        <label for="rep-f-${esc(m.metric_key)}">${esc(m.display_name)}</label>
+        <input type="${type}" id="rep-f-${esc(m.metric_key)}" data-key="${esc(m.metric_key)}" value="${esc(val)}" placeholder="${ph}"${stepAttr}>
+      </div>`;
+  });
+  html += `
+    <div class="report-actions">
+      <button class="save" data-action="report-save" data-existing="${data.has_existing?'1':'0'}">💾 Сохранить</button>
+      ${data.has_existing ? '<button class="delete" data-action="report-delete">🗑 Удалить весь отчёт</button>' : ''}
+      <button class="cancel" data-action="report-cancel">Отмена</button>
+    </div>`;
+  area.innerHTML = html;
+  area.classList.remove('hidden');
+}
+
+async function reportSave(btn){
+  const spec = document.getElementById('reportSpec').value;
+  const date = document.getElementById('reportDate').value;
+  const inputs = document.querySelectorAll('#reportFormArea input[data-key]');
+  const values = {};
+  inputs.forEach(inp=>{
+    const v = (inp.value||'').trim();
+    if(v !== '') values[inp.dataset.key] = v;
+  });
+  if(Object.keys(values).length === 0){
+    toast('Заполните хотя бы одно поле','err');
+    return;
+  }
+  const isOverwrite = btn && btn.dataset.existing === '1';
+  if(isOverwrite){
+    if(!confirm(`У ${spec} за ${fmtDateRu(date)} уже есть отчёт. Перезаписать?`)) return;
+  }
+  try{
+    const r = await api('/admin/api/report', {method:'POST', body: JSON.stringify({specialist: spec, date, values})});
+    toast(`✓ Сохранено: ${r.saved} полей`, 'ok');
+    reportCancel();
+  }catch(e){
+    toast('Ошибка сохранения: '+e.message,'err');
+  }
+}
+
+async function reportDelete(){
+  const spec = document.getElementById('reportSpec').value;
+  const date = document.getElementById('reportDate').value;
+  if(!confirm(`Удалить весь отчёт ${spec} за ${fmtDateRu(date)}? Действие необратимо.`)) return;
+  try{
+    const r = await api(`/admin/api/report?specialist=${encodeURIComponent(spec)}&date=${date}`, {method:'DELETE'});
+    toast(`✓ Удалено строк: ${r.deleted}`, 'ok');
+    reportCancel();
+  }catch(e){
+    toast('Ошибка: '+e.message,'err');
+  }
+}
+
+function reportCancel(){
+  const area = document.getElementById('reportFormArea');
+  area.classList.add('hidden');
+  area.innerHTML = '';
 }
 
 function renderMetrics(){
@@ -413,6 +562,7 @@ document.addEventListener('click', e=>{
   if(!a) {
     if(t.id === 'loginBtn') saveToken();
     else if(t.id === 'saveTimeBtn') saveReminderTime();
+    else if(t.id === 'reportLoadBtn') reportLoad();
     return;
   }
   const id = t.dataset.id ? parseInt(t.dataset.id, 10) : null;
@@ -433,6 +583,9 @@ document.addEventListener('click', e=>{
     case 'sp-test': sendReminder(name); break;
     case 'sp-add': addSp(); break;
     case 'send-all': sendReminder('all'); break;
+    case 'report-save': reportSave(t); break;
+    case 'report-delete': reportDelete(); break;
+    case 'report-cancel': reportCancel(); break;
     case 'orphan-toggle': {
       const card = t.closest('.adm-card');
       const form = card && card.querySelector('.orphan-form');

@@ -47,6 +47,7 @@ from db import (  # noqa: F401,E402
     get_specialists_dict, get_specialists_order,
     get_specialists_admin, get_admin_specialist_groups,
     get_setting, set_setting,
+    get_report_for_day, upsert_report, delete_report_for_day,
 )
 
 # tg_bot — handlers and scheduling

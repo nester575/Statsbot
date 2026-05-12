@@ -437,3 +437,118 @@ class TestSendReminder:
         text = mock_telegram_http[0]["json"]["text"]
         assert "Эльдана" in text
         assert "/start" in text
+
+
+# ============================================================
+# Retroactive report entry
+# ============================================================
+
+class TestRetroactiveReport:
+    def test_get_returns_existing_values_and_has_existing_true(self, client, monkeypatch, auth_headers):
+        monkeypatch.setattr(db, "get_report_for_day", lambda sp, d: {"заявки": "10", "письма": "33"})
+        monkeypatch.setattr(db, "get_admin_config", lambda: [
+            {"id": 1, "specialist": "Эльдана", "metric_key": "заявки", "display_name": "заявки",
+             "question_text": "?", "position": 0, "is_text": False, "is_active": True,
+             "plan_week": None, "plan_month": None},
+            {"id": 2, "specialist": "Эльдана", "metric_key": "письма", "display_name": "письма",
+             "question_text": "?", "position": 1, "is_text": False, "is_active": True,
+             "plan_week": None, "plan_month": None},
+            {"id": 3, "specialist": "Олег", "metric_key": "контакты", "display_name": "контакты",
+             "question_text": "?", "position": 0, "is_text": False, "is_active": True,
+             "plan_week": None, "plan_month": None},
+        ])
+        r = client.get("/admin/api/report?specialist=Эльдана&date=2026-05-08", headers=auth_headers)
+        assert r.status_code == 200
+        d = r.get_json()
+        assert d["has_existing"] is True
+        assert d["values"] == {"заявки": "10", "письма": "33"}
+        # Only Эльдана's metrics returned, not Олег's
+        assert {m["specialist"] for m in d["metrics"]} == {"Эльдана"}
+
+    def test_get_returns_has_existing_false_when_empty(self, client, monkeypatch, auth_headers):
+        monkeypatch.setattr(db, "get_report_for_day", lambda sp, d: {})
+        monkeypatch.setattr(db, "get_admin_config", lambda: [])
+        r = client.get("/admin/api/report?specialist=Эльдана&date=2026-05-08", headers=auth_headers)
+        assert r.status_code == 200
+        assert r.get_json()["has_existing"] is False
+
+    def test_get_inactive_metrics_excluded(self, client, monkeypatch, auth_headers):
+        """If admin hid a metric, it shouldn't appear in the retro-entry form."""
+        monkeypatch.setattr(db, "get_report_for_day", lambda sp, d: {})
+        monkeypatch.setattr(db, "get_admin_config", lambda: [
+            {"id": 1, "specialist": "Эльдана", "metric_key": "active",
+             "display_name": "a", "question_text": "?", "position": 0,
+             "is_text": False, "is_active": True, "plan_week": None, "plan_month": None},
+            {"id": 2, "specialist": "Эльдана", "metric_key": "hidden",
+             "display_name": "h", "question_text": "?", "position": 1,
+             "is_text": False, "is_active": False, "plan_week": None, "plan_month": None},
+        ])
+        r = client.get("/admin/api/report?specialist=Эльдана&date=2026-05-08", headers=auth_headers)
+        keys = {m["metric_key"] for m in r.get_json()["metrics"]}
+        assert keys == {"active"}
+
+    def test_get_rejects_invalid_date(self, client, auth_headers):
+        r = client.get("/admin/api/report?specialist=X&date=badformat", headers=auth_headers)
+        assert r.status_code == 400
+
+    def test_get_requires_specialist_and_date(self, client, auth_headers):
+        r = client.get("/admin/api/report?date=2026-05-08", headers=auth_headers)
+        assert r.status_code == 400
+        r = client.get("/admin/api/report?specialist=X", headers=auth_headers)
+        assert r.status_code == 400
+
+    def test_post_upserts_with_default_time(self, client, fake_conn, auth_headers):
+        r = client.post(
+            "/admin/api/report",
+            json={"specialist": "Эльдана", "date": "2026-05-08",
+                  "values": {"заявки": "10", "письма": "33"}},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        assert r.get_json()["saved"] == 2
+        sqls = [q for q, _ in fake_conn.queries]
+        assert any("DELETE FROM reports" in q for q in sqls)
+        assert sum(1 for q in sqls if "INSERT INTO reports" in q) == 2
+        # Default time 18:00:00 should appear in INSERT params
+        insert_params = [p for q, p in fake_conn.queries if "INSERT" in q.upper()]
+        assert all("18:00:00" in str(p) for p in insert_params)
+
+    def test_post_empty_values_rejected(self, client, fake_conn, auth_headers):
+        r = client.post(
+            "/admin/api/report",
+            json={"specialist": "Эльдана", "date": "2026-05-08", "values": {}},
+            headers=auth_headers,
+        )
+        assert r.status_code == 400
+
+    def test_post_all_blank_values_rejected(self, client, fake_conn, auth_headers):
+        r = client.post(
+            "/admin/api/report",
+            json={"specialist": "Эльдана", "date": "2026-05-08",
+                  "values": {"заявки": "", "письма": "   "}},
+            headers=auth_headers,
+        )
+        assert r.status_code == 400
+
+    def test_post_invalid_date_rejected(self, client, fake_conn, auth_headers):
+        r = client.post(
+            "/admin/api/report",
+            json={"specialist": "X", "date": "bad-date", "values": {"a": "1"}},
+            headers=auth_headers,
+        )
+        assert r.status_code == 400
+
+    def test_delete_issues_sql(self, client, fake_conn, auth_headers):
+        r = client.delete("/admin/api/report?specialist=Эльдана&date=2026-05-08", headers=auth_headers)
+        assert r.status_code == 200
+        assert "deleted" in r.get_json()
+        sqls = " ".join(q for q, _ in fake_conn.queries)
+        assert "DELETE FROM reports" in sqls
+
+    def test_all_endpoints_require_token(self, client):
+        assert client.get("/admin/api/report?specialist=X&date=2026-05-08").status_code == 401
+        assert client.post(
+            "/admin/api/report",
+            json={"specialist": "X", "date": "2026-05-08", "values": {"a": "1"}},
+        ).status_code == 401
+        assert client.delete("/admin/api/report?specialist=X&date=2026-05-08").status_code == 401

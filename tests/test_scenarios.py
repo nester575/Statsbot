@@ -224,3 +224,60 @@ class TestHolidayExclusion:
         assert bot.is_working_day(date(2026, 5, 4)) is False
         # Adjacent days still working
         assert bot.is_working_day(date(2026, 5, 5)) is True
+
+
+# ============================================================
+# Scenario 8: Admin enters a forgotten report retroactively
+# ============================================================
+
+class TestBackdatedEntryScenario:
+    """Сотрудник забыл сдать отчёт вчера → утром босс впишет за него.
+    1. GET сначала возвращает has_existing=False
+    2. POST с values сохраняется (DELETE+INSERT, время 18:00)
+    3. Повторный GET возвращает has_existing=True (модель данных совпадает)
+    """
+
+    def test_full_flow(self, client, fake_conn, monkeypatch, auth_headers):
+        # 1. Specialist forgot — GET returns empty
+        monkeypatch.setattr(db, "get_report_for_day", lambda sp, d: {})
+        monkeypatch.setattr(db, "get_admin_config", lambda: [
+            {"id": 1, "specialist": "Эльдана", "metric_key": "заявки",
+             "display_name": "заявки", "question_text": "?", "position": 0,
+             "is_text": False, "is_active": True, "plan_week": None, "plan_month": None},
+        ])
+        r = client.get("/admin/api/report?specialist=Эльдана&date=2026-05-11", headers=auth_headers)
+        assert r.status_code == 200
+        assert r.get_json()["has_existing"] is False
+
+        # 2. Admin submits values
+        r = client.post(
+            "/admin/api/report",
+            json={"specialist": "Эльдана", "date": "2026-05-11",
+                  "values": {"заявки": "12"}},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        # Verify the time used is 18:00 — entry should be treated as "after deadline"
+        ins_params = [p for q, p in fake_conn.queries if "INSERT" in q.upper()]
+        assert any("18:00:00" in str(p) for p in ins_params)
+
+        # 3. Subsequent GET (now mock has the data) should report has_existing
+        monkeypatch.setattr(db, "get_report_for_day", lambda sp, d: {"заявки": "12"})
+        r = client.get("/admin/api/report?specialist=Эльдана&date=2026-05-11", headers=auth_headers)
+        assert r.get_json()["has_existing"] is True
+
+    def test_overwrite_path_replaces_old_values(self, client, fake_conn, auth_headers):
+        """When admin saves over existing report, DELETE+INSERT pattern wipes
+        old metrics first — no half-merged state."""
+        r = client.post(
+            "/admin/api/report",
+            json={"specialist": "Эльдана", "date": "2026-05-08",
+                  "values": {"заявки": "5"}},
+            headers=auth_headers,
+        )
+        assert r.status_code == 200
+        sqls = [q for q, _ in fake_conn.queries]
+        # DELETE must precede INSERTs to clear out stale rows
+        delete_idx = next(i for i, q in enumerate(sqls) if "DELETE FROM reports" in q)
+        insert_idx = next(i for i, q in enumerate(sqls) if "INSERT INTO reports" in q)
+        assert delete_idx < insert_idx
