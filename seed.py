@@ -125,7 +125,19 @@ def main():
     p.add_argument("--keep-after", type=str, default=None, metavar="\"YYYY-MM-DD HH:MM\"",
                    help="Удалить ВСЁ кроме отчётов после указанной даты-времени (Bishkek)")
     p.add_argument("--skip-rate", type=float, default=0.2, help="вероятность пропуска у специалиста (0.2 = 20%)")
+    p.add_argument("--force", action="store_true",
+                   help="Bypass SEED_OK safety check (use with caution)")
     args = p.parse_args()
+
+    # Safety guard: refuse to run unless SEED_OK=1 is set, or --force passed.
+    # Prevents accidental wipes via stray pre-deploy commands or misconfig.
+    if not args.force and os.environ.get("SEED_OK") != "1":
+        print("❌ seed.py: ЗАПУСК ЗАБЛОКИРОВАН.")
+        print("   Чтобы запустить намеренно, установите env SEED_OK=1, например:")
+        print("       SEED_OK=1 python seed.py --wipe-today")
+        print("   или передайте --force.")
+        print("   База данных НЕ изменена.")
+        return
 
     print(f"→ Подключаюсь к БД...")
     conn = psycopg2.connect(DATABASE_URL, sslmode="require")
