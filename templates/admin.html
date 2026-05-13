@@ -99,6 +99,23 @@ h1{color:#e8ff47;font-size:24px;margin:0 0 8px}
 .sp-add button{background:#e8ff47;color:#0a0c10;border:none;padding:7px 14px;border-radius:3px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
 .send-all{background:#47c8ff;color:#0a0c10;border:none;padding:6px 12px;border-radius:3px;font-weight:600;cursor:pointer;font-family:inherit;font-size:12px;margin-left:auto}
 .send-all:hover{filter:brightness(1.1)}
+/* Edits / audit log */
+.edits-bar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.edits-bar button{background:#47c8ff;color:#0a0c10;border:none;padding:7px 14px;border-radius:3px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
+.edits-bar button:hover{filter:brightness(1.1)}
+.edits-bar .meta{color:#5a6070;font-size:11px}
+.edits-table{width:100%;border-collapse:collapse;font-size:12px}
+.edits-table th{text-align:left;color:#5a6070;font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:6px 8px;border-bottom:1px solid #1a1d26;font-weight:500}
+.edits-table td{padding:7px 8px;border-bottom:1px solid #1a1d26;color:#e2e6f0;vertical-align:top}
+.edits-table tr:hover td{background:#0d1017}
+.edits-table .via{display:inline-block;padding:1px 7px;border-radius:9px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+.edits-table .via-bot{background:rgba(232,255,71,.12);color:#e8ff47;border:1px solid rgba(232,255,71,.3)}
+.edits-table .via-admin{background:rgba(71,200,255,.12);color:#47c8ff;border:1px solid rgba(71,200,255,.3)}
+.edits-table .old{color:#ef6464;text-decoration:line-through;font-size:11px}
+.edits-table .new{color:#4ade80;font-weight:500}
+.edits-table .arrow{color:#5a6070;margin:0 4px}
+.edits-table .empty-cell{color:#5a6070;font-style:italic;font-size:10px}
+.edits-empty{color:#5a6070;text-align:center;padding:24px 0;font-size:13px}
 .toast{position:fixed;bottom:24px;right:24px;background:#11141b;border:1px solid #232838;color:#e2e6f0;padding:12px 18px;border-radius:6px;font-size:13px;opacity:0;transition:opacity .2s;z-index:200;max-width:360px}
 .toast.show{opacity:1}
 .toast.ok{border-color:rgba(74,222,128,.4)}
@@ -145,6 +162,14 @@ h1{color:#e8ff47;font-size:24px;margin:0 0 8px}
       <button id="reportLoadBtn">Загрузить</button>
     </div>
     <div id="reportFormArea" class="hidden"></div>
+  </div>
+  <div class="adm-card">
+    <h2>📝 Журнал правок</h2>
+    <div class="edits-bar">
+      <button id="editsLoadBtn">Загрузить</button>
+      <span class="meta">правки за всё время; сначала самые новые</span>
+    </div>
+    <div id="editsArea"></div>
   </div>
   <div class="adm-card-wrap">
     <label class="toggle-hidden">
@@ -571,6 +596,54 @@ async function sendReminder(target){
   }catch(e){toast('Ошибка: '+e.message,'err')}
 }
 
+// === Audit log: who edited what, when ===
+function fmtEditTs(iso){
+  // iso comes as e.g. "2026-05-12 14:33:08.123456+06"; trim to YYYY-MM-DD HH:MM
+  if(!iso) return '';
+  const m = String(iso).match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
+  return m ? (m[1] + ' ' + m[2]) : String(iso);
+}
+function renderEditCell(v){
+  if(v === null || v === undefined) return '<span class="empty-cell">(нет)</span>';
+  return esc(v);
+}
+async function loadEdits(){
+  const area = document.getElementById('editsArea');
+  area.innerHTML = '<div class="edits-empty">загружаю…</div>';
+  try{
+    const r = await api('/admin/api/edits?limit=200');
+    const rows = r.edits || [];
+    if(rows.length === 0){
+      area.innerHTML = '<div class="edits-empty">Правок ещё не было.</div>';
+      return;
+    }
+    let h = '<table class="edits-table"><thead><tr>'+
+      '<th>Когда</th><th>За дату</th><th>Кто</th><th>Откуда</th>'+
+      '<th>Метрика</th><th>Изменение</th></tr></thead><tbody>';
+    for(const e of rows){
+      const viaCls = e.edited_via === 'bot' ? 'via-bot' : 'via-admin';
+      const viaLabel = e.edited_via === 'bot' ? 'бот' : 'админка';
+      const editor = e.edited_via === 'bot'
+        ? esc(e.specialist)
+        : '<span class="empty-cell">админ</span>';
+      h += '<tr>'+
+        '<td>'+esc(fmtEditTs(e.edited_at))+'</td>'+
+        '<td>'+esc(e.report_date)+'</td>'+
+        '<td>'+editor+'</td>'+
+        '<td><span class="via '+viaCls+'">'+viaLabel+'</span></td>'+
+        '<td>'+esc(e.metric)+'</td>'+
+        '<td><span class="old">'+renderEditCell(e.old_value)+'</span>'+
+          '<span class="arrow">→</span>'+
+          '<span class="new">'+renderEditCell(e.new_value)+'</span></td>'+
+        '</tr>';
+    }
+    h += '</tbody></table>';
+    area.innerHTML = h;
+  }catch(err){
+    area.innerHTML = '<div class="edits-empty">Ошибка загрузки: '+esc(err.message)+'</div>';
+  }
+}
+
 // === Event delegation (single registration; survives re-renders) ===
 document.addEventListener('click', e=>{
   const t = e.target;
@@ -579,6 +652,7 @@ document.addEventListener('click', e=>{
     if(t.id === 'loginBtn') saveToken();
     else if(t.id === 'saveTimeBtn') saveReminderTime();
     else if(t.id === 'reportLoadBtn') reportLoad();
+    else if(t.id === 'editsLoadBtn') loadEdits();
     return;
   }
   const id = t.dataset.id ? parseInt(t.dataset.id, 10) : null;

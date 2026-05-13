@@ -518,9 +518,11 @@ class TestRetroactiveReport:
         sqls = [q for q, _ in fake_conn.queries]
         assert any("DELETE FROM reports" in q for q in sqls)
         assert sum(1 for q in sqls if "INSERT INTO reports" in q) == 2
-        # Default time 18:00:00 should appear in INSERT params
-        insert_params = [p for q, p in fake_conn.queries if "INSERT" in q.upper()]
-        assert all("18:00:00" in str(p) for p in insert_params)
+        # Default time 18:00:00 should appear in reports INSERT params
+        # (report_edits inserts don't have a time column — filter them out)
+        report_inserts = [p for q, p in fake_conn.queries
+                          if "INSERT INTO reports" in q]
+        assert all("18:00:00" in str(p) for p in report_inserts)
 
     def test_post_empty_values_rejected(self, client, fake_conn, auth_headers):
         r = client.post(

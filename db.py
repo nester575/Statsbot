@@ -122,6 +122,23 @@ def init_db():
                     value TEXT NOT NULL
                 )
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS report_edits (
+                    id          SERIAL PRIMARY KEY,
+                    edited_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    report_date DATE NOT NULL,
+                    specialist  TEXT NOT NULL,
+                    metric      TEXT NOT NULL,
+                    old_value   TEXT,
+                    new_value   TEXT,
+                    edited_via  TEXT NOT NULL,
+                    edited_by   TEXT
+                )
+            """)
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS report_edits_edited_at_idx "
+                "ON report_edits (edited_at DESC)"
+            )
 
             # Seed metrics_config from DEFAULT_QUESTIONS (one-time)
             cur.execute("SELECT COUNT(*) FROM metrics_config")
@@ -235,15 +252,108 @@ def upsert_report(specialist, date, values, time_str="18:00:00"):
                 )
 
 
-def delete_report_for_day(specialist, date):
-    """Delete all rows for (specialist, date). Returns count deleted."""
+def upsert_report_with_audit(specialist, date, new_values, via, by=None, time_str=None):
+    """Replace rows for (specialist, date) and log per-metric diffs.
+
+    - Preserves the original `time` of the report if one exists, so a retroactive
+      edit doesn't move the entry to a new submission time.
+    - Falls back to `time_str` (or 18:00 default) when no prior entry exists.
+    - Writes one row to `report_edits` per ACTUAL change (added / changed / removed).
+      Unchanged metrics produce no audit noise.
+
+    Args:
+        specialist: name
+        date: datetime.date
+        new_values: {metric_key: value} — full desired state for the day
+        via: 'bot' (self-edit) or 'admin' (retro from web UI)
+        by: telegram_id of editor (only meaningful when via='bot')
+        time_str: override; if None, original time is preserved
+
+    Returns:
+        (changes_count, time_used_str)
+    """
     with get_conn() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                "SELECT metric, value, time::text FROM reports "
+                "WHERE specialist = %s AND date = %s",
+                (specialist, date),
+            )
+            existing = cur.fetchall()
+            old_map = {m: v for m, v, _ in existing}
+
+            if time_str is None:
+                time_str = existing[0][2] if existing else "18:00:00"
+
             cur.execute(
                 "DELETE FROM reports WHERE specialist = %s AND date = %s",
                 (specialist, date),
             )
-            return cur.rowcount
+            for metric, value in new_values.items():
+                cur.execute(
+                    "INSERT INTO reports (date, time, specialist, metric, value) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (date, time_str, specialist, metric, str(value)),
+                )
+
+            new_map = {k: str(v) for k, v in new_values.items()}
+            all_metrics = set(old_map) | set(new_map)
+            changes = 0
+            for metric in sorted(all_metrics):
+                old_v = old_map.get(metric)
+                new_v = new_map.get(metric)
+                if old_v != new_v:
+                    cur.execute(
+                        "INSERT INTO report_edits "
+                        "(report_date, specialist, metric, old_value, new_value, "
+                        "edited_via, edited_by) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                        (date, specialist, metric, old_v, new_v, via, by),
+                    )
+                    changes += 1
+            return changes, time_str
+
+
+def get_recent_edits(limit=200):
+    """Audit log entries, newest first. Used by admin /admin/api/edits."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT id, edited_at::text AS edited_at, report_date::text AS report_date, "
+                "specialist, metric, old_value, new_value, edited_via, edited_by "
+                "FROM report_edits "
+                "ORDER BY edited_at DESC, id DESC LIMIT %s",
+                (int(limit),),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+
+def delete_report_for_day(specialist, date, via="admin", by=None):
+    """Delete all rows for (specialist, date). Logs each removed metric to audit.
+    Returns count deleted.
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT metric, value FROM reports "
+                "WHERE specialist = %s AND date = %s",
+                (specialist, date),
+            )
+            existing = cur.fetchall()
+            cur.execute(
+                "DELETE FROM reports WHERE specialist = %s AND date = %s",
+                (specialist, date),
+            )
+            n = cur.rowcount
+            for metric, value in existing:
+                cur.execute(
+                    "INSERT INTO report_edits "
+                    "(report_date, specialist, metric, old_value, new_value, "
+                    "edited_via, edited_by) "
+                    "VALUES (%s, %s, %s, %s, NULL, %s, %s)",
+                    (date, specialist, metric, value, via, by),
+                )
+            return n
 
 
 # ============================================================

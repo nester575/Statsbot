@@ -443,9 +443,12 @@ def admin_report_upsert():
              if v is not None and str(v).strip() != ""}
     if not clean:
         abort(400, "all values are empty")
-    db.upsert_report(specialist, d, clean)
-    logger.info(f"Retroactive report saved: {specialist} / {date_str} / {len(clean)} fields")
-    return jsonify({"ok": True, "saved": len(clean)})
+    changes, _ = db.upsert_report_with_audit(specialist, d, clean, via="admin")
+    logger.info(
+        f"Retroactive report saved: {specialist} / {date_str} / "
+        f"{len(clean)} fields / {changes} audited changes"
+    )
+    return jsonify({"ok": True, "saved": len(clean), "changes": changes})
 
 
 @app.route("/admin/api/report", methods=["DELETE"])
@@ -456,6 +459,23 @@ def admin_report_delete():
     if not specialist or not date_str:
         abort(400, "specialist and date are required")
     d = _parse_report_date(date_str)
-    n = db.delete_report_for_day(specialist, d)
+    n = db.delete_report_for_day(specialist, d, via="admin")
     logger.info(f"Retroactive report deleted: {specialist} / {date_str} / {n} rows")
     return jsonify({"ok": True, "deleted": n})
+
+
+# ============================================================
+# Audit log: who edited what, when
+# ============================================================
+
+@app.route("/admin/api/edits")
+def admin_edits_list():
+    _check_admin_token()
+    limit_raw = request.args.get("limit", "100")
+    try:
+        limit = int(limit_raw)
+    except (TypeError, ValueError):
+        limit = 100
+    limit = max(1, min(500, limit))
+    edits = db.get_recent_edits(limit=limit)
+    return jsonify({"edits": edits, "count": len(edits)})

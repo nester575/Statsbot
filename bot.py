@@ -30,6 +30,8 @@ PORT          = config.PORT
 BISHKEK       = config.BISHKEK
 HOLIDAYS      = config.HOLIDAYS
 ASKING        = config.ASKING
+EDIT_PICK_DATE = config.EDIT_PICK_DATE
+EDIT_ASKING    = config.EDIT_ASKING
 DEFAULT_QUESTIONS        = config.DEFAULT_QUESTIONS
 DEFAULT_SPECIALIST_ORDER = config.DEFAULT_SPECIALIST_ORDER
 
@@ -49,11 +51,14 @@ from db import (  # noqa: F401,E402
     get_specialists_admin, get_admin_specialist_groups,
     get_setting, set_setting,
     get_report_for_day, upsert_report, delete_report_for_day,
+    upsert_report_with_audit, get_recent_edits,
 )
 
 # tg_bot — handlers and scheduling
 from tg_bot import (  # noqa: F401,E402
-    user_sessions, start, handle_answer, cancel,
+    user_sessions, edit_sessions,
+    start, handle_answer, cancel,
+    edit_start, edit_picked_date, edit_answer, edit_cancel,
     reminder_job, schedule_reminder, _do_schedule, _post_init,
     send_telegram_message,
     run_bot,

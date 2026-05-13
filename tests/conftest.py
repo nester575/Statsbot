@@ -28,10 +28,13 @@ for mod_name in ("telegram", "telegram.ext"):
         sys.modules[mod_name] = types.ModuleType(mod_name)
 sys.modules["telegram"].Update = type("Update", (), {})
 sys.modules["telegram"].ReplyKeyboardRemove = type("ReplyKeyboardRemove", (), {})
+sys.modules["telegram"].InlineKeyboardButton = type("InlineKeyboardButton", (), {})
+sys.modules["telegram"].InlineKeyboardMarkup = type("InlineKeyboardMarkup", (), {})
 te = sys.modules["telegram.ext"]
 te.Application = type("Application", (), {})
 te.CommandHandler = type("CommandHandler", (), {})
 te.MessageHandler = type("MessageHandler", (), {})
+te.CallbackQueryHandler = type("CallbackQueryHandler", (), {})
 te.filters = types.SimpleNamespace(TEXT=1, COMMAND=2)
 te.ContextTypes = types.SimpleNamespace(DEFAULT_TYPE=type)
 te.ConversationHandler = type("ConversationHandler", (), {"END": -1})

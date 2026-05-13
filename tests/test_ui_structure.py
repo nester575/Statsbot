@@ -119,6 +119,22 @@ class TestAdminStructure:
         assert "onblur=" not in html
         assert "onchange=" not in html
 
+    def test_has_edits_log_section(self, html):
+        """The «Журнал правок» card with load button + area."""
+        assert "Журнал правок" in html
+        assert 'id="editsLoadBtn"' in html
+        assert 'id="editsArea"' in html
+
+    def test_edits_log_uses_lazy_load(self, html):
+        """We don't fetch /admin/api/edits on every page load — must require a click."""
+        # The endpoint name must appear (in loadEdits function),
+        # but loadAll must NOT call it
+        assert "/admin/api/edits" in html
+        # Verify loadAll does NOT auto-call edits endpoint
+        load_all_match = re.search(r"async function loadAll\(\).*?\n\}", html, re.DOTALL)
+        assert load_all_match is not None
+        assert "/admin/api/edits" not in load_all_match.group(0)
+
 
 # ============================================================
 # Cross-cutting checks

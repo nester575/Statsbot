@@ -16,8 +16,10 @@ DB_POOL_MAX  = int(os.environ.get("DB_POOL_MAX", "10"))
 BISHKEK  = pytz.timezone("Asia/Bishkek")
 HOLIDAYS = set()  # ISO date strings, e.g. {"2026-03-21"}; populated via admin in future
 
-# Telegram conversation state ID — single state, "asking next question"
-ASKING = 1
+# Telegram conversation state IDs
+ASKING         = 1  # /start: asking next question
+EDIT_PICK_DATE = 2  # /edit: waiting for user to pick today/yesterday
+EDIT_ASKING    = 3  # /edit: asking next question (with current value shown)
 
 # === Default seed data (used by db.init_db on first run) ===
 DEFAULT_SPECIALIST_ORDER = ["Эльдана", "Станислав", "Мадина", "Олег", "Атай", "Производство"]
