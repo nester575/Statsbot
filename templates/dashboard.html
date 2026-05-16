@@ -89,11 +89,57 @@ summary:hover{color:#e2e6f0}
 .chart-mini .area{opacity:.85}
 .chart-empty{color:#2d3346;font-size:10px;text-align:center;padding-top:16px}
 @media (max-width:900px){
-  .metric-grid{grid-template-columns:1fr;gap:6px}
+  body{padding:12px}
+  h1{font-size:22px;line-height:1.2;margin-bottom:6px}
+  .live{font-size:11px;margin-bottom:14px}
+  .tabs{margin-bottom:14px;gap:0}
+  .tab{padding:10px 14px;font-size:13px}
+  .period{font-size:11px;margin-bottom:12px}
+  .card{padding:14px 12px;margin-bottom:12px;border-radius:6px}
+  .name{font-size:16px;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+  .name .days{font-size:10px}
+  /* Status chips block — compact */
+  #status .chip{font-size:11px;padding:4px 10px;margin:3px 4px 3px 0}
+  /* Hide the desktop column header; mobile uses a different layout */
   .metric-header{display:none}
-  .metric-row{padding:10px 0}
-  .metric-row .col-avg,.metric-row .col-plan,.metric-row .col-trend,.metric-row .col-total{text-align:left;justify-content:flex-start}
-  .chart-mini{width:100%;height:60px}
+  /* Compact today-row (single-day view, if used elsewhere) */
+  .today-row .value{flex:0 0 auto;min-width:80px}
+  .today-row .value .num{font-size:18px}
+  /* MOBILE METRIC ROW
+     Switch grid → flex+wrap. Layout becomes:
+       Line 1: [label ......................... TOTAL]
+       Line 2: [← horiz-scroll of day-cells →]
+       Line 3: [~ср/день] [план chip] [тренд chip]   (wraps if narrow)
+       Line 4: [================ chart ==============]
+     Achieved via per-item `order` + `flex-basis:100%` on full-width items. */
+  .metric-row.metric-grid{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 10px;
+    align-items:center;
+    padding:14px 0;
+  }
+  .metric-row .label{flex:1 1 auto;min-width:0;font-size:14px;order:1}
+  .metric-row .col-total{flex:0 0 auto;font-size:24px;text-align:right;order:2}
+  .metric-row .days{flex:0 0 100%;order:3;margin:0;padding-bottom:4px}
+  .metric-row .col-avg{flex:0 0 auto;order:4;font-size:11px;text-align:left;justify-content:flex-start}
+  .metric-row .col-plan{flex:0 0 auto;order:5;justify-content:flex-start}
+  .metric-row .col-trend{flex:0 0 auto;order:6;justify-content:flex-start}
+  .chart-mini{flex:0 0 100%;order:7;width:100%;height:54px}
+  /* Tighten chip/trend padding on mobile so 3 chips fit on one row */
+  .plan,.trend{font-size:10px;padding:2px 7px}
+  .day-cell{min-width:38px;padding:4px 5px}
+  .day-cell .d{font-size:8px}
+  .day-cell .v{font-size:12px}
+}
+/* Extra-narrow phones (≤380px): even more compact, in case 3 meta-chips
+   don't fit on one line — they wrap naturally thanks to flex-wrap above. */
+@media (max-width:380px){
+  body{padding:10px}
+  h1{font-size:20px}
+  .card{padding:12px 10px}
+  .metric-row .col-total{font-size:22px}
+  .day-cell{min-width:36px;padding:3px 4px}
 }
 #tt{position:fixed;background:#1a1d26;color:#e2e6f0;border:1px solid #2d3346;padding:6px 10px;border-radius:4px;font-size:12px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:100;white-space:nowrap}
 #tt.show{opacity:1}

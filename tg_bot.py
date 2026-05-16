@@ -1,5 +1,6 @@
 """Telegram bot: handlers, scheduling, and message-send helpers."""
 import asyncio
+import html as html_lib
 import logging
 from datetime import datetime, time as dtime, timedelta
 
@@ -88,12 +89,18 @@ async def handle_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), reply_markup=ReplyKeyboardRemove())
 
     if config.BOSS_ID:
-        boss_lines = [f"📊 *{name}* — {datetime.now(config.BISHKEK).strftime('%d.%m %H:%M')}\n"]
+        # HTML + escape: ключи метрик содержат "_" (объекты_работа, план_завтра и т.д.),
+        # что ломало Markdown-парсер Telegram при нечётном кол-ве "_". Тогда сообщение
+        # боссу молча отбрасывалось — отчёт в БД сохранялся, но в ленте босса не появлялся.
+        when = datetime.now(config.BISHKEK).strftime('%d.%m %H:%M')
+        boss_lines = [f"📊 <b>{html_lib.escape(name)}</b> — {when}\n"]
         for k, v in answers.items():
-            boss_lines.append(f"  {k}: `{v}`")
+            boss_lines.append(
+                f"  {html_lib.escape(str(k))}: <code>{html_lib.escape(str(v))}</code>"
+            )
         try:
             await context.bot.send_message(
-                config.BOSS_ID, "\n".join(boss_lines), parse_mode="Markdown"
+                config.BOSS_ID, "\n".join(boss_lines), parse_mode="HTML"
             )
         except Exception as e:
             logger.error(f"Boss error: {e}")
