@@ -397,6 +397,11 @@ def run_bot():
         entry_points=[CommandHandler("start", start)],
         states={config.ASKING: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_answer)]},
         fallbacks=[CommandHandler("cancel", cancel)],
+        # CRITICAL: /start ALWAYS re-enters the conversation, even if user
+        # is mid-survey. Without this, an unfinished survey from a previous
+        # day silently blocks all subsequent /start commands. Discovered
+        # when Эльдана's /start was ignored for days (only /cancel worked).
+        allow_reentry=True,
     )
     application.add_handler(conv)
 
@@ -411,6 +416,8 @@ def run_bot():
             ],
         },
         fallbacks=[CommandHandler("cancel", edit_cancel)],
+        # Same reasoning as above — /edit must always re-enter cleanly.
+        allow_reentry=True,
     )
     application.add_handler(edit_conv)
     schedule_reminder(application, db.get_setting("reminder_time", "09:00"))
