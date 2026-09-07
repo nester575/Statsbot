@@ -14,6 +14,19 @@ h1{color:#e8ff47;font-size:32px;margin:0 0 8px}
 .tab:hover{color:#e2e6f0}
 .tab.active{color:#e8ff47;border-bottom-color:#e8ff47}
 .period{color:#5a6070;font-size:12px;margin-bottom:16px}
+.custom-picker{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:14px;background:#11141b;border:1px solid #232838;border-radius:6px}
+.custom-picker label{display:flex;align-items:center;gap:6px;color:#9097a8;font-size:12px}
+.custom-picker input[type=date]{background:#0d1017;border:1px solid #2d3346;color:#e2e6f0;padding:7px 9px;border-radius:3px;font-family:inherit;font-size:13px;color-scheme:dark;cursor:pointer;min-width:150px}
+.custom-picker input[type=date]:focus{outline:none;border-color:#47c8ff}
+.custom-picker input[type=date]::-webkit-calendar-picker-indicator{filter:invert(.8) brightness(1.5);cursor:pointer;opacity:.7;padding:2px}
+.custom-picker input[type=date]::-webkit-calendar-picker-indicator:hover{opacity:1}
+.custom-picker button#customApply{background:#e8ff47;color:#0a0c10;border:none;padding:8px 16px;border-radius:3px;font-weight:600;cursor:pointer;font-family:inherit;font-size:13px}
+.custom-picker button#customApply:hover{filter:brightness(1.1)}
+.custom-picker button#customApply:disabled{opacity:.4;cursor:not-allowed}
+.custom-quick{display:flex;gap:6px;align-items:center;color:#5a6070;font-size:11px;margin-left:auto}
+.custom-quick .quick-btn{background:none;color:#9097a8;border:1px solid #232838;padding:5px 10px;border-radius:3px;font-family:inherit;font-size:11px;cursor:pointer}
+.custom-quick .quick-btn:hover{color:#e2e6f0;border-color:#47c8ff}
+.custom-quick .quick-btn.active{color:#e8ff47;border-color:#e8ff47}
 .card{background:#11141b;border:1px solid #232838;padding:20px;margin-bottom:16px;border-radius:4px}
 .name{color:#47c8ff;font-size:18px;font-weight:bold;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
 .days{color:#5a6070;font-size:11px;font-weight:normal}
@@ -154,6 +167,7 @@ summary:hover{color:#e2e6f0}
 <div class="tabs">
   <button class="tab active" data-tab="week">Неделя</button>
   <button class="tab" data-tab="month">Месяц</button>
+  <button class="tab" data-tab="custom">Период</button>
 </div>
 <div id="week" class="view">
   <div class="period" id="week-period"></div>
@@ -162,6 +176,22 @@ summary:hover{color:#e2e6f0}
 <div id="month" class="view hidden">
   <div class="period" id="month-period"></div>
   <div id="month-data">Загрузка...</div>
+</div>
+<div id="custom" class="view hidden">
+  <div class="custom-picker">
+    <label>С <input type="date" id="customStart"></label>
+    <label>По <input type="date" id="customEnd"></label>
+    <button id="customApply">Показать</button>
+    <div class="custom-quick">
+      Быстро:
+      <button class="quick-btn" data-days="7">7 дн</button>
+      <button class="quick-btn" data-days="14">14 дн</button>
+      <button class="quick-btn" data-days="30">30 дн</button>
+      <button class="quick-btn" data-days="90">90 дн</button>
+    </div>
+  </div>
+  <div class="period" id="custom-period"></div>
+  <div id="custom-data">Выберите период выше и нажмите «Показать».</div>
 </div>
 <div id="tt"></div>
 <script>
@@ -244,7 +274,28 @@ function renderChart(metric,points,gid){
 }
 
 async function loadAggregate(period){
-  const d=await fetch(`/api/aggregate?period=${period}`).then(r=>r.json());
+  // For period=custom, read the picked dates from the DOM inputs.
+  let url = `/api/aggregate?period=${period}`;
+  if(period === 'custom'){
+    const s = document.getElementById('customStart').value;
+    const e = document.getElementById('customEnd').value;
+    if(!s || !e) return;                            // waiting for user to pick
+    if(s > e){                                      // simple client-side guard
+      document.getElementById('custom-data').innerHTML =
+        '<div class="card empty">Дата «С» должна быть раньше или равна «По».</div>';
+      return;
+    }
+    url += `&start=${s}&end=${e}`;
+  }
+  const r = await fetch(url);
+  if(!r.ok){
+    let msg = 'Ошибка загрузки';
+    try { const j = await r.json(); msg = j.message || j.error || msg; } catch(_) {}
+    document.getElementById(`${period}-data`).innerHTML =
+      `<div class="card empty">${msg}</div>`;
+    return;
+  }
+  const d = await r.json();
   document.getElementById(`${period}-period`).textContent=`Период: ${fmtDate(d.start)} – ${fmtDate(d.end)}`;
   const display=d.display_names||{};
   const plans=d.plans||{};
@@ -347,7 +398,51 @@ function bindTooltips(period){
 function showTab(tab){
   document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
   document.querySelectorAll('.view').forEach(v=>v.classList.toggle('hidden',v.id!==tab));
+  if(tab === 'custom'){
+    initCustomPickerIfNeeded();
+    // Only fetch if user has already picked both dates (avoids empty request on first switch).
+    const s = document.getElementById('customStart').value;
+    const e = document.getElementById('customEnd').value;
+    if(s && e) loadAggregate('custom');
+    return;
+  }
   loadAggregate(tab);
+}
+
+// ---- Custom period picker ----
+function initCustomPickerIfNeeded(){
+  const startInp = document.getElementById('customStart');
+  const endInp = document.getElementById('customEnd');
+  if(startInp.dataset.bound === '1') return;
+  startInp.dataset.bound = '1';
+  const today = new Date();
+  const todayIso = todayLocalISO();
+  startInp.max = todayIso;
+  endInp.max = todayIso;
+  // Sensible defaults: last 7 days
+  if(!endInp.value) endInp.value = todayIso;
+  if(!startInp.value){
+    const s = new Date(today); s.setDate(s.getDate() - 6);
+    startInp.value = `${s.getFullYear()}-${String(s.getMonth()+1).padStart(2,'0')}-${String(s.getDate()).padStart(2,'0')}`;
+  }
+  // Auto-open picker on click (Chrome 99+, Safari 16+); no-op on older.
+  [startInp, endInp].forEach(inp => {
+    inp.addEventListener('click', () => { try { inp.showPicker && inp.showPicker(); } catch(_){} });
+  });
+  document.getElementById('customApply').addEventListener('click', () => loadAggregate('custom'));
+  document.querySelectorAll('.custom-quick .quick-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const days = parseInt(btn.dataset.days, 10);
+      const end = new Date();
+      const start = new Date(); start.setDate(start.getDate() - (days - 1));
+      const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      startInp.value = iso(start);
+      endInp.value = iso(end);
+      document.querySelectorAll('.custom-quick .quick-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadAggregate('custom');
+    });
+  });
 }
 
 document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
@@ -357,6 +452,12 @@ loadAggregate('week');
 setInterval(()=>{
   loadStatus();
   const a=document.querySelector('.tab.active').dataset.tab;
+  // Skip auto-refresh for custom if user hasn't picked dates yet
+  if(a === 'custom'){
+    const s = document.getElementById('customStart').value;
+    const e = document.getElementById('customEnd').value;
+    if(!s || !e) return;
+  }
   loadAggregate(a);
 }, 120000);
 </script>
